@@ -1,0 +1,230 @@
+import type { ReactNode } from 'react';
+import {
+  Pressable,
+  type PressableProps,
+  ScrollView,
+  StyleSheet,
+  Text,
+  type TextProps,
+  View,
+  type ViewProps,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Polyline } from 'react-native-svg';
+import { couleurs, espace, rayon, typo } from './theme';
+
+// Briques UI réutilisables. Esthétique sobre et dense, zéro gamification.
+
+/**
+ * Conteneur d'écran. Par défaut le bord haut N'est PAS inclus dans le safe-area : les écrans
+ * sont rendus sous un header de Stack qui gère déjà l'encoche (sinon double marge en haut).
+ * Passer `bordHaut` pour les écrans sans header (ex. onboarding).
+ */
+export function Ecran({ children, bordHaut = false }: { children: ReactNode; bordHaut?: boolean }) {
+  const edges = bordHaut ? (['top', 'left', 'right'] as const) : (['left', 'right'] as const);
+  return (
+    <SafeAreaView style={styles.ecran} edges={edges}>
+      <ScrollView contentContainerStyle={styles.scroll}>{children}</ScrollView>
+    </SafeAreaView>
+  );
+}
+
+export function Carte({ children, style, ...rest }: ViewProps & { children: ReactNode }) {
+  return (
+    <View style={[styles.carte, style]} {...rest}>
+      {children}
+    </View>
+  );
+}
+
+export function Titre({ children, style, ...rest }: TextProps & { children: ReactNode }) {
+  return (
+    <Text style={[styles.titre, style]} {...rest}>
+      {children}
+    </Text>
+  );
+}
+
+export function SousTitre({ children, style, ...rest }: TextProps & { children: ReactNode }) {
+  return (
+    <Text style={[styles.sousTitre, style]} {...rest}>
+      {children}
+    </Text>
+  );
+}
+
+export function Corps({ children, style, ...rest }: TextProps & { children: ReactNode }) {
+  return (
+    <Text style={[styles.corps, style]} {...rest}>
+      {children}
+    </Text>
+  );
+}
+
+/** Donnée chiffrée mise en valeur (JetBrains Mono). */
+export function Donnee({
+  valeur,
+  unite,
+  couleur = couleurs.texte,
+}: {
+  valeur: string | number;
+  unite?: string;
+  couleur?: string;
+}) {
+  return (
+    <Text style={[styles.donnee, { color: couleur }]}>
+      {valeur}
+      {unite ? <Text style={styles.unite}> {unite}</Text> : null}
+    </Text>
+  );
+}
+
+export function Bouton({
+  titre,
+  variante = 'principal',
+  couleur = couleurs.salle,
+  style,
+  ...rest
+}: PressableProps & {
+  titre: string;
+  variante?: 'principal' | 'secondaire';
+  couleur?: string;
+}) {
+  const principal = variante === 'principal';
+  return (
+    <Pressable
+      accessibilityRole="button"
+      style={({ pressed }) => [
+        styles.bouton,
+        principal ? { backgroundColor: couleur } : { borderWidth: 1, borderColor: couleurs.trait },
+        pressed && styles.boutonPresse,
+        style as object,
+      ]}
+      {...rest}
+    >
+      <Text style={[styles.boutonTexte, !principal && { color: couleurs.texte }]}>{titre}</Text>
+    </Pressable>
+  );
+}
+
+/** Sélecteur segmenté (échelle 0-10 / 1-5) — saisie rapide sans clavier. */
+export function Echelle({
+  min,
+  max,
+  valeur,
+  onChange,
+  couleur = couleurs.salle,
+}: {
+  min: number;
+  max: number;
+  valeur: number;
+  onChange: (v: number) => void;
+  couleur?: string;
+}) {
+  const valeurs = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+  return (
+    <View style={styles.echelle}>
+      {valeurs.map((v) => {
+        const actif = v === valeur;
+        return (
+          <Pressable
+            key={v}
+            accessibilityRole="button"
+            accessibilityState={{ selected: actif }}
+            onPress={() => onChange(v)}
+            style={[
+              styles.echelleItem,
+              actif && { backgroundColor: couleur, borderColor: couleur },
+            ]}
+          >
+            <Text style={[styles.echelleTexte, actif && styles.echelleTexteActif]}>{v}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Courbe de tendance minimaliste (sans axes ni labels) — ex. évolution du poids. */
+export function Courbe({
+  valeurs,
+  couleur = couleurs.salle,
+  hauteur = 80,
+}: {
+  valeurs: number[];
+  couleur?: string;
+  hauteur?: number;
+}) {
+  const min = Math.min(...valeurs);
+  const max = Math.max(...valeurs);
+  const etendue = max - min || 1;
+  const points = valeurs
+    .map((v, i) => {
+      const x = valeurs.length > 1 ? (i / (valeurs.length - 1)) * 100 : 50;
+      const y = hauteur - ((v - min) / etendue) * hauteur;
+      return `${x},${y}`;
+    })
+    .join(' ');
+  return (
+    <Svg width="100%" height={hauteur} viewBox={`0 0 100 ${hauteur}`} preserveAspectRatio="none">
+      <Polyline
+        points={points}
+        fill="none"
+        stroke={couleur}
+        strokeWidth={1.5}
+        vectorEffect="non-scaling-stroke"
+      />
+    </Svg>
+  );
+}
+
+/** Pastille colorée du semainier. */
+export function Pastille({ couleur, plein }: { couleur: string; plein: boolean }) {
+  return (
+    <View
+      style={[
+        styles.pastille,
+        plein ? { backgroundColor: couleur } : { borderColor: couleur, borderWidth: 2 },
+      ]}
+    />
+  );
+}
+
+const styles = StyleSheet.create({
+  ecran: { flex: 1, backgroundColor: couleurs.fond },
+  scroll: { padding: espace.lg, gap: espace.lg, paddingBottom: espace.xxl },
+  carte: {
+    backgroundColor: couleurs.surface,
+    borderRadius: rayon.lg,
+    borderWidth: 1,
+    borderColor: couleurs.trait,
+    padding: espace.lg,
+    gap: espace.sm,
+  },
+  titre: { fontFamily: typo.titre, fontSize: 22, color: couleurs.texte },
+  sousTitre: { fontFamily: typo.titre, fontSize: 16, color: couleurs.texte },
+  corps: { fontFamily: typo.corps, fontSize: 14, color: couleurs.texteAttenue, lineHeight: 20 },
+  donnee: { fontFamily: typo.donnees, fontSize: 28 },
+  unite: { fontFamily: typo.donnees, fontSize: 14, color: couleurs.texteAttenue },
+  bouton: {
+    borderRadius: rayon.md,
+    paddingVertical: espace.md,
+    paddingHorizontal: espace.lg,
+    alignItems: 'center',
+  },
+  boutonPresse: { opacity: 0.7 },
+  boutonTexte: { fontFamily: typo.titre, fontSize: 15, color: '#0F141B' },
+  echelle: { flexDirection: 'row', flexWrap: 'wrap', gap: espace.xs },
+  echelleItem: {
+    minWidth: 38,
+    height: 38,
+    borderRadius: rayon.sm,
+    borderWidth: 1,
+    borderColor: couleurs.trait,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  echelleTexte: { fontFamily: typo.donnees, fontSize: 14, color: couleurs.texteAttenue },
+  echelleTexteActif: { color: '#0F141B' },
+  pastille: { width: 14, height: 14, borderRadius: 7 },
+});

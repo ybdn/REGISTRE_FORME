@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "REGISTRE.FORME",
+    "slug": "registre-forme",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "registreforme",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#0F141B",
+      "resizeMode": "contain"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "android": {
+      "package": "com.registreforme.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0F141B"
+      },
+      "permissions": []
+    },
+    "ios": {
+      "bundleIdentifier": "com.registreforme.app",
+      "supportsTablet": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-notifications",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": false
+          }
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

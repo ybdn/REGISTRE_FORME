@@ -1,0 +1,48 @@
+{
+  "name": "registre-forme",
+  "version": "0.1.0",
+  "private": true,
+  "description": "REGISTRE.FORME — remise en forme pilotée par le biofeedback santé (Crohn iléal).",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."
+  },
+  "dependencies": {
+    "@expo-google-fonts/jetbrains-mono": "^0.2.3",
+    "@expo-google-fonts/space-grotesk": "^0.2.3",
+    "expo": "^54.0.0",
+    "expo-build-properties": "~1.0.10",
+    "expo-crypto": "~15.0.9",
+    "expo-file-system": "~19.0.23",
+    "expo-font": "~14.0.12",
+    "expo-haptics": "~15.0.8",
+    "expo-linking": "~8.0.12",
+    "expo-notifications": "~0.32.17",
+    "expo-print": "~15.0.8",
+    "expo-router": "~6.0.24",
+    "expo-sharing": "~14.0.8",
+    "expo-splash-screen": "~31.0.13",
+    "expo-sqlite": "~16.0.10",
+    "expo-status-bar": "~3.0.9",
+    "node-forge": "^1.4.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-svg": "15.12.1",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/react": "~19.1.10",
+    "typescript": "~5.9.2",
+    "vitest": "^2.1.9"
+  }
+}

@@ -8,16 +8,18 @@ import {
   alimentsParRecence,
   classerAliments,
   normaliserAliment,
+  resumerClassements,
 } from '@/domaine';
 import { useMagasin } from '@/etat/magasin';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-// Suivi alimentaire express : chips d'aliments/boissons consommés sur la journée
-// (pas de repas structurés), puis liste classée — statut manuel d'un tap, verdict
-// auto par corrélation 48 h sinon. N'influence jamais le moteur d'adaptation.
+// Onglet Alimentation — hub du suivi alimentaire express : chips d'aliments/
+// boissons consommés sur la journée (pas de repas structurés), synthèse des
+// verdicts en tête, liste classée (statut manuel d'un tap, verdict auto par
+// corrélation 48 h sinon) et historique des consommations. N'influence jamais
+// le moteur d'adaptation.
 
 const ALIMENTS_DEFAUT = ['café', 'lait', 'gluten', 'crudités', 'alcool', 'épices'];
 
@@ -46,7 +48,6 @@ const COULEURS_VERDICT: Record<VerdictAliment, string> = {
 };
 
 export default function EcranAlimentation() {
-  const router = useRouter();
   const {
     aujourdhui,
     journal,
@@ -65,6 +66,8 @@ export default function EcranAlimentation() {
   // Aliments ajoutés à la main pendant la session (pas encore en base).
   const [ajoutes, setAjoutes] = useState<string[]>([]);
   const [saisie, setSaisie] = useState('');
+  // Feedback éphémère après enregistrement (on reste sur l'onglet).
+  const [enregistre, setEnregistre] = useState(false);
 
   const chips = useMemo(() => {
     const recents = alimentsParRecence(consommations, ALIMENTS_DEFAUT);
@@ -74,6 +77,29 @@ export default function EcranAlimentation() {
   const classements = useMemo(
     () => classerAliments(consommations, statutsAliments, journal, aujourdhui),
     [consommations, statutsAliments, journal, aujourdhui],
+  );
+
+  // Synthèse en tête : compteurs par verdict, seulement ce qui demande attention.
+  const synthese = useMemo(() => resumerClassements(classements), [classements]);
+  const compteursSynthese = useMemo(
+    () =>
+      [
+        { n: synthese.aEviter, libelle: 'à éviter', couleur: couleurs.sante },
+        { n: synthese.suspects, libelle: 'suspect', couleur: couleurs.ambre },
+        { n: synthese.aTester, libelle: 'à tester', couleur: couleurs.course },
+        { n: synthese.toleres, libelle: 'toléré', couleur: couleurs.freeletics },
+      ].filter((c) => c.n > 0),
+    [synthese],
+  );
+
+  // Historique : derniers jours consommés (jours vides exclus), du plus récent.
+  const historique = useMemo(
+    () =>
+      [...consommations]
+        .filter((c) => c.aliments.length > 0)
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 14),
+    [consommations],
   );
 
   function changerDate(date: string) {
@@ -98,8 +124,9 @@ export default function EcranAlimentation() {
   async function valider() {
     await saisirConsommation({ date: dateCible, aliments: selection });
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Retour au tableau de bord, comme le journal.
-    router.replace('/');
+    // Onglet : on reste sur place, simple confirmation éphémère.
+    setEnregistre(true);
+    setTimeout(() => setEnregistre(false), 1500);
   }
 
   /** Tap sur un aliment classé : fait tourner le statut manuel. */
@@ -114,6 +141,17 @@ export default function EcranAlimentation() {
         Coche ce que tu as mangé et bu. L’app croise ensuite avec tes symptômes pour repérer ce qui
         passe ou pas — sans jamais toucher ta séance.
       </Corps>
+
+      {compteursSynthese.length > 0 ? (
+        <View style={styles.synthese}>
+          {compteursSynthese.map((c) => (
+            <View key={c.libelle} style={[styles.compteur, { borderColor: c.couleur }]}>
+              <Text style={[styles.compteurNombre, { color: c.couleur }]}>{c.n}</Text>
+              <Text style={styles.compteurLibelle}>{c.libelle}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       <Segments
         options={[
@@ -152,7 +190,11 @@ export default function EcranAlimentation() {
         </View>
       </Carte>
 
-      <Bouton titre="Enregistrer" couleur={couleurs.sante} onPress={valider} />
+      <Bouton
+        titre={enregistre ? 'Enregistré ✓' : 'Enregistrer'}
+        couleur={couleurs.sante}
+        onPress={valider}
+      />
 
       <Carte>
         <SousTitre>Mes aliments</SousTitre>
@@ -190,8 +232,26 @@ export default function EcranAlimentation() {
           </>
         )}
       </Carte>
+
+      {historique.length > 0 ? (
+        <Carte>
+          <SousTitre>Historique</SousTitre>
+          {historique.map((c) => (
+            <View key={c.date} style={styles.ligneHisto}>
+              <Text style={styles.histoDate}>{formatJour(c.date)}</Text>
+              <Text style={styles.histoAliments}>{c.aliments.join(', ')}</Text>
+            </View>
+          ))}
+        </Carte>
+      ) : null}
     </Ecran>
   );
+}
+
+/** « AAAA-MM-JJ » → « JJ/MM » pour l'historique. */
+function formatJour(iso: string): string {
+  const [, mois, jour] = iso.split('-');
+  return `${jour}/${mois}`;
 }
 
 const styles = StyleSheet.create({
@@ -238,4 +298,25 @@ const styles = StyleSheet.create({
     color: couleurs.texteAttenue,
     marginTop: espace.xs,
   },
+  synthese: { flexDirection: 'row', flexWrap: 'wrap', gap: espace.sm },
+  compteur: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: espace.xs,
+    paddingHorizontal: espace.md,
+    paddingVertical: espace.sm,
+    borderRadius: rayon.md,
+    borderWidth: 1,
+  },
+  compteurNombre: { fontFamily: typo.donnees, fontSize: 18 },
+  compteurLibelle: { fontFamily: typo.corps, fontSize: 12, color: couleurs.texteAttenue },
+  ligneHisto: {
+    flexDirection: 'row',
+    gap: espace.md,
+    paddingVertical: espace.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: couleurs.trait,
+  },
+  histoDate: { fontFamily: typo.donnees, fontSize: 13, color: couleurs.texteAttenue, width: 48 },
+  histoAliments: { flex: 1, fontFamily: typo.corps, fontSize: 13, color: couleurs.texte },
 });

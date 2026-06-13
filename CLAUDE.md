@@ -30,8 +30,10 @@ Toujours passer `typecheck` + `lint` + `test` avant de conclure une modification
 ```
 app/            Écrans Expo Router — app/(onglets)/ = tab bar (Aujourd'hui, Journal, Tendances,
                 Réglages), les écrans de détail restent des routes Stack dans app/_layout.tsx
-src/etat/       magasin.ts — UNIQUE store Zustand : colle UI ↔ données, état dérivé
-src/donnees/    Persistance SQLite (expo-sqlite) + services Expo (notifications, PDF, sauvegarde chiffrée)
+src/etat/       magasin.ts — UNIQUE store Zustand : colle UI ↔ données (via l'interface Depot), état dérivé
+src/donnees/    Persistance derrière l'interface `Depot` (depot.ts) : depotSqlite (mobile, expo-sqlite),
+                depotSupabase (web online, cf. docs/07), depotMemoire (tests). Auth : auth.ts + supabaseClient.ts.
+                Services Expo (notifications, PDF, sauvegarde chiffrée) avec shims `.web.ts`.
 src/domaine/    Logique métier PURE — aucune dépendance Expo, 100 % testable Vitest
 src/design/     theme.ts (couleurs/typo/espaces) + composants.tsx (Ecran, Carte, Bouton, Titre…)
 ```
@@ -43,7 +45,8 @@ l'UI ; le store ne contient que de la colle.
 ### Flux de données
 
 1. Les écritures (journal, séance, mesure) passent par les actions du `magasin.ts`, qui persistent
-   en SQLite via `src/donnees/depots.ts` puis appellent `recharger()`.
+   via l'interface `Depot` (depotSqlite → SQLite sur mobile, depotSupabase sur web) puis appellent
+   `recharger()`. Le store ignore le backend concret (injecté par `fabriqueDepot`).
 2. `recharger()` relit la base et **recalcule à la volée tout l'état dérivé** (adaptation du jour,
    score de forme, baseline) — l'état dérivé n'est jamais stocké, seules les données brutes le sont.
 3. Le moteur d'adaptation (`src/domaine/moteurAdaptation.ts`) décide un niveau de séance
@@ -59,14 +62,18 @@ Migrations versionnées dans `src/donnees/schema.ts` via `PRAGMA user_version`.
 
 ## Invariants non négociables (cf. docs/)
 
-1. **Local-first** : aucune requête réseau au runtime, pas d'analytics, pas de compte.
-   L'import de séances externes (Strava, Freeletics…) passe par Health Connect, la base
-   santé locale d'Android (`src/donnees/santeConnect.ts`) — lecture opt-in, sur l'appareil.
-   > ⚠️ **Évolution planifiée (non encore implémentée, cf. `docs/07`)** : un portage web + une
-   > synchronisation Supabase **opt-in** assoupliront cet invariant en « local-first **par défaut** ;
-   > sync cloud chiffrée opt-in ». Le moteur (`src/domaine/`) restera 100 % côté client (aucune
-   > logique métier serveur). Tant que `docs/07` n'est pas livré, l'invariant ci-dessus reste vrai
-   > tel quel.
+1. **Local-first par défaut ; sync cloud opt-in** (assoupli en Phase 1, cf. `docs/07`).
+   Déconnecté, l'app fonctionne 100 % hors-ligne (SQLite local, aucun réseau) — c'est le défaut et
+   le repli, pas d'analytics. Se connecter à un compte **active** la synchronisation Supabase (web
+   online aujourd'hui ; sync mobile offline-first = Phase 2). Le moteur (`src/domaine/`) reste
+   **100 % côté client** : aucune logique métier serveur (ADR-002), Supabase ne fait qu'authentifier
+   + stocker + transporter. Isolation par RLS `user_id = auth.uid()` + TLS + chiffrement at-rest.
+   > ⚠️ **E2EE pas encore livré (Phase 3)** : au stade actuel le `contenu` est stocké en clair
+   > (`jsonb`) côté Supabase. Le chiffrement de bout en bout du contenu (passphrase, contenu opaque)
+   > est planifié et réutilisera `chiffrement.ts`.
+
+   L'import de séances externes (Strava, Freeletics…) passe par Health Connect, la base santé locale
+   d'Android (`src/donnees/santeConnect.ts`) — lecture opt-in, sur l'appareil ; absent sur web.
 2. **Déterministe et explicable** : chaque décision du moteur est une règle lisible, affichée
    telle quelle à l'utilisateur (`raison`), et annulable d'un tap. Pas de ML opaque.
 3. **Sécurité MICI d'abord** : les garde-fous absolus (douleur ≥ 7, pas d'apnée sous charge…)
@@ -88,6 +95,8 @@ Migrations versionnées dans `src/donnees/schema.ts` via `PRAGMA user_version`.
   fonctionnalité (la feuille de route est dans `05`, les specs du moteur v2 dans `02`).
 - `docs/07` = plan d'architecture du **portage web (GitHub Pages) + sync Supabase** (auth compte
   unique, RLS, chiffrement E2EE, plan en 5 phases). Lire avant toute tâche liée au web ou au cloud.
-  Prérequis bloquant = Phase 0 : extraire une interface `Depot` pour découpler `magasin.ts` de
-  `expo-sqlite` (aujourd'hui le store passe `db` à chaque dépôt).
+  **Phases 0 et 1 livrées** : interface `Depot` (depot.ts) + depotSqlite/depotSupabase/depotMemoire,
+  auth + écran connexion, schéma Supabase (`supabase/schema.sql`) + RLS, shims `.web.ts`, déploiement
+  GitHub Pages. **Reste à faire** : Phase 2 (sync mobile offline-first : migration SQLite v6
+  `dirty`/`maj_le` + SyncManager LWW), Phase 3 (E2EE), Phase 4 (offline web).
 - Ne jamais explorer `node_modules/` ; `grep` ciblé plutôt que lecture de répertoires entiers.

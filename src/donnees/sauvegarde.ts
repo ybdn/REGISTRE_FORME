@@ -23,6 +23,8 @@ const TABLES_SAUVEGARDE = [
   'mesure_corporelle',
   'photo_suivi',
   'adaptation',
+  'consommation_jour',
+  'aliment_statut',
 ] as const;
 
 /** Lit l'intégralité d'une table sous forme de lignes brutes (clé→valeur SQLite). */
@@ -101,8 +103,9 @@ export async function importerSauvegarde(
 
   await db.withTransactionAsync(async () => {
     for (const table of TABLES_SAUVEGARDE) {
-      const lignes = sauvegarde.tables[table];
-      if (lignes) await restaurerTable(db, table, lignes);
+      // Purge systématique, même si la table est absente du fichier (ancienne
+      // sauvegarde) : sinon les données actuelles survivraient à la restauration.
+      await restaurerTable(db, table, sauvegarde.tables[table] ?? []);
     }
   });
 }

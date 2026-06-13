@@ -23,9 +23,11 @@ import {
   numeroSemaine,
   obtenirModele,
 } from '@/domaine';
+import { type Identifiants, seConnecter, seDeconnecter, sessionActuelle } from '@/donnees/auth';
 import type { Depot } from '@/donnees/depot';
 import type { MesureCorporelle, SeancePlanifieeStockee } from '@/donnees/depots';
 import { creerDepotParDefaut } from '@/donnees/fabriqueDepot';
+import { creerSyncLocal } from '@/donnees/fabriqueSync';
 import { synchroniserNotifications } from '@/donnees/notifications';
 import type { Profil } from '@/donnees/profil';
 import { genererRapportPdf } from '@/donnees/rapportPdf';
@@ -34,6 +36,11 @@ import {
   exporterSauvegarde as exporterSauvegardeDb,
   importerSauvegarde as importerSauvegardeDb,
 } from '@/donnees/sauvegarde';
+import { obtenirSupabase, supabaseConfigure } from '@/donnees/supabaseClient';
+import type { SyncLocalSqlite } from '@/donnees/sync/syncLocalSqlite';
+import { synchroniser } from '@/donnees/sync/syncManager';
+import { creerTransportSupabase } from '@/donnees/sync/transportSupabase';
+import type { TransportSync } from '@/donnees/sync/types';
 import * as Crypto from 'expo-crypto';
 import { create } from 'zustand';
 
@@ -44,6 +51,15 @@ let depot: Depot | null = null;
 // Garde anti-double-initialisation (StrictMode monte les effets deux fois en dev).
 let initEnCours: Promise<void> | null = null;
 
+// ── Synchronisation cloud (mobile, opt-in, docs/07 Phase 2) ──────────────────
+// `syncLocal` = côté SQLite local (lecture des `dirty`, application LWW) ; `transport` = côté
+// Supabase (présent une fois connecté). Tout reste `null` sur web (online-first) et hors config.
+let syncLocal: SyncLocalSqlite | null = null;
+let transport: TransportSync | null = null;
+let timerSync: ReturnType<typeof setTimeout> | null = null;
+/** Anti-rafale : on coalesce les écritures successives en une seule passe de sync. */
+const DELAI_SYNC_MS = 2000;
+
 /** Séance du jour effective = trame planifiée, graduée selon le niveau décidé par le moteur. */
 export interface SeanceDuJour {
   planifiee: SeancePlanifieeStockee;
@@ -53,6 +69,30 @@ export interface SeanceDuJour {
   /** Compat UI historique : vrai si le niveau est « allégée ». */
   allegee: boolean;
 }
+
+/** État de la synchronisation cloud, exposé à l'UI (indicateur + écran Réglages). */
+export type StatutSync = 'inactif' | 'enCours' | 'ok' | 'erreur' | 'confirmationRequise';
+export interface EtatSyncUI {
+  /** Sync possible sur cet appareil (Supabase configuré + plateforme mobile). */
+  disponible: boolean;
+  /** Une session est active (l'utilisateur s'est connecté). */
+  connecte: boolean;
+  email: string | null;
+  statut: StatutSync;
+  /** ISO du dernier rapprochement réussi. */
+  derniere: string | null;
+  /** Message d'erreur éventuel (statut 'erreur'). */
+  message: string | null;
+}
+
+const SYNC_INITIAL: EtatSyncUI = {
+  disponible: false,
+  connecte: false,
+  email: null,
+  statut: 'inactif',
+  derniere: null,
+  message: null,
+};
 
 interface EtatApp {
   pret: boolean;
@@ -70,9 +110,17 @@ interface EtatApp {
   idAdaptationDuJour: string | null;
   scoreFormeDuJour: ScoreForme | null;
   baselineDuJour: Baseline | null;
+  sync: EtatSyncUI;
 
   /** `fabrique` injecte un `Depot` alternatif (tests, web) ; défaut = SQLite local. */
   initialiser: (fabrique?: () => Promise<Depot>) => Promise<void>;
+  /** Connexion au compte cloud (mobile) : active la synchronisation et lance un 1er rapprochement. */
+  connecterSync: (identifiants: Identifiants) => Promise<void>;
+  deconnecterSync: () => Promise<void>;
+  /** Pousse les modifications locales et applique les distantes (LWW). `forcer` lève le garde-fou §6.2. */
+  synchroniserMaintenant: (forcer?: boolean) => Promise<void>;
+  /** Renonce au premier rapprochement proposé (garde l'appareil local, sans fusion). */
+  ignorerRapprochement: () => void;
   creerProfil: (
     p: Omit<
       Profil,
@@ -111,6 +159,7 @@ export const useMagasin = create<EtatApp>((set, get) => ({
   idAdaptationDuJour: null,
   scoreFormeDuJour: null,
   baselineDuJour: null,
+  sync: SYNC_INITIAL,
 
   async initialiser(fabrique = creerDepotParDefaut) {
     if (get().pret) return;
@@ -124,10 +173,75 @@ export const useMagasin = create<EtatApp>((set, get) => ({
       const profil = await depot.lireProfil();
       const aujourdhui = aujourdhuiISO();
       set({ etape: 'recharge données' });
-      await recharger(set, depot, profil, aujourdhui);
+      await recharger(set, depot, profil, aujourdhui, { declencherSync: false });
       set({ pret: true, etape: 'prêt' });
+      // Sync cloud : câblage non bloquant (n'empêche jamais l'app de démarrer hors-ligne).
+      void demarrerSync();
     })();
     return initEnCours;
+  },
+
+  async connecterSync(identifiants) {
+    if (!syncLocal) return; // sync indisponible (web / Supabase non configuré)
+    set({ sync: { ...get().sync, statut: 'enCours', message: null } });
+    try {
+      const session = await seConnecter(identifiants);
+      transport = creerTransportSupabase(obtenirSupabase(), session.user.id);
+      set({ sync: { ...get().sync, connecte: true, email: session.user.email ?? null } });
+      await get().synchroniserMaintenant();
+    } catch (e) {
+      set({
+        sync: {
+          ...get().sync,
+          statut: 'erreur',
+          message: e instanceof Error ? e.message : 'Connexion impossible.',
+        },
+      });
+    }
+  },
+
+  async deconnecterSync() {
+    await seDeconnecter().catch(() => {});
+    transport = null;
+    if (timerSync) {
+      clearTimeout(timerSync);
+      timerSync = null;
+    }
+    set({
+      sync: { ...get().sync, connecte: false, email: null, statut: 'inactif', message: null },
+    });
+  },
+
+  async synchroniserMaintenant(forcer = false) {
+    if (!syncLocal || !transport || !depot) return;
+    set({ sync: { ...get().sync, statut: 'enCours', message: null } });
+    try {
+      const res = await synchroniser(syncLocal, transport, syncLocal, { forcer });
+      if (res.statut === 'confirmationRequise') {
+        set({ sync: { ...get().sync, statut: 'confirmationRequise' } });
+        return;
+      }
+      // Des enregistrements distants ont été appliqués → relire l'état dérivé (sans relancer la sync).
+      if (res.appliques > 0) {
+        const profil = await depot.lireProfil();
+        await recharger(set, depot, profil, get().aujourdhui, { declencherSync: false });
+      }
+      set({
+        sync: { ...get().sync, statut: 'ok', derniere: new Date().toISOString(), message: null },
+      });
+    } catch (e) {
+      set({
+        sync: {
+          ...get().sync,
+          statut: 'erreur',
+          message: e instanceof Error ? e.message : 'Synchronisation impossible.',
+        },
+      });
+    }
+  },
+
+  ignorerRapprochement() {
+    set({ sync: { ...get().sync, statut: 'inactif' } });
   },
 
   async creerProfil(p) {
@@ -298,6 +412,7 @@ async function recharger(
   depot: Depot,
   profil: Profil | null,
   aujourdhui: string,
+  options: { declencherSync?: boolean } = {},
 ): Promise<void> {
   const semaineCourante = profil ? numeroSemaine(profil.dateDebutProgramme, aujourdhui) : 1;
 
@@ -360,6 +475,35 @@ async function recharger(
   if (profil) {
     void synchroniserNotifications(aujourdhui, journal, mesures);
   }
+
+  // Toute écriture marque des lignes `dirty` → planifier un push différé (no-op si non connecté).
+  // L'appelant peut désactiver le déclencheur (recharge consécutive à un pull, pour éviter une boucle).
+  if (options.declencherSync !== false) planifierSync();
+}
+
+/** Câble la sync au démarrage (mobile + Supabase configuré) et reprend une session restaurée. */
+async function demarrerSync(): Promise<void> {
+  if (!supabaseConfigure) return; // mode 100 % local (défaut)
+  syncLocal = await creerSyncLocal(); // null sur web (online-first)
+  if (!syncLocal) return;
+  useMagasin.setState((e) => ({ sync: { ...e.sync, disponible: true } }));
+  const session = await sessionActuelle();
+  if (!session) return; // sync disponible mais pas encore connecté
+  transport = creerTransportSupabase(obtenirSupabase(), session.user.id);
+  useMagasin.setState((e) => ({
+    sync: { ...e.sync, connecte: true, email: session.user.email ?? null },
+  }));
+  await useMagasin.getState().synchroniserMaintenant();
+}
+
+/** Push différé (debounce) : coalesce une rafale d'écritures en une seule passe de sync. */
+function planifierSync(): void {
+  if (!syncLocal || !transport) return;
+  if (timerSync) clearTimeout(timerSync);
+  timerSync = setTimeout(() => {
+    timerSync = null;
+    void useMagasin.getState().synchroniserMaintenant();
+  }, DELAI_SYNC_MS);
 }
 
 /** Libellé lisible d'un modèle (pour l'UI). */

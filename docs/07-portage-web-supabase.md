@@ -443,12 +443,26 @@ doivent passer à la sortie de chaque phase (rappel `CLAUDE.md`).
 - **Sortie :** app web déployée, connexion fonctionnelle, données lues/écrites dans Supabase.
 - **Validation :** smoke test RLS OK (lecture/écriture anonymes bloquées) + flux connecté testé en local.
 
-### Phase 2 — Synchronisation mobile (offline‑first)
-- [ ] Migration SQLite `version: 6` (§6.1 : colonnes `dirty`/`maj_le`, table `sync_etat`).
-- [ ] `SyncManager` (push/pull LWW, §4.4) + déclencheurs (connexion, foreground, post‑écriture).
-- [ ] Modale de premier rapprochement (§6.2) + indicateur d'état de sync dans l'UI.
-- [ ] Brancher le `depotSupabase` côté mobile comme **cible de sync** (pas comme dépôt de lecture).
+### Phase 2 — Synchronisation mobile (offline‑first) ✅ LIVRÉE
+- [x] Migration SQLite `version: 6` (§6.1 : colonnes `dirty`/`maj_le`, tables `sync_etat` +
+  `sync_suppressions` pour les tombstones).
+- [x] `SyncManager` (push/pull LWW, §4.4) — orchestration **pure** (`src/donnees/sync/syncManager.ts`),
+  testée sans émulateur (`tests/syncManager.test.ts`). Côté local SQLite : `syncLocalSqlite.ts` +
+  `registreSync.ts` ; côté distant : `transportSupabase.ts` (interface `TransportSync`).
+- [x] Déclencheurs : au démarrage (`demarrerSync`), au retour au premier plan (`AppState` dans
+  `_layout.tsx`), après chaque écriture (debounce `planifierSync` dans `recharger`).
+- [x] Premier rapprochement (§6.2) : le SyncManager renvoie `confirmationRequise` quand les deux
+  côtés ont des données ; carte de confirmation + indicateur d'état de sync dans l'écran Réglages.
+- [x] Le mobile lit/écrit toujours SQLite ; `transportSupabase` est la **cible de sync** (push/pull
+  en tâche de fond), jamais le dépôt de lecture de l'UI.
 - **Sortie :** une saisie mobile remonte au cloud et redescend sur le web, et inversement.
+- **Périmètre de sync :** uniquement les données brutes divergentes (`profil`, `journal_crohn`,
+  `seance_realisee`, `mesure_corporelle`, `consommation_jour`, `aliment_statut`). `adaptation` et
+  `seance_planifiee` en sont **exclues** car déterministes (recalculées / regénérées à l'identique
+  sur chaque appareil, ADR‑002).
+- **Limite connue (suivi) :** la session Supabase mobile est gardée **en mémoire** (ni AsyncStorage
+  ni `expo-secure-store` installés) → reconnexion nécessaire à chaque lancement. Persistance de
+  session = petit incrément additif (réutilisera `expo-secure-store`, déjà prévu en Phase 3).
 
 ### Phase 3 — Chiffrement de bout en bout *(recommandé)*
 - [ ] Activation E2EE : définition de passphrase, dérivation de clé, stockage `secure-store`/mémoire.

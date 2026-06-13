@@ -187,6 +187,50 @@ export const MIGRATIONS: Migration[] = [
         ON seance_realisee(id_externe) WHERE id_externe IS NOT NULL;
     `,
   },
+  {
+    version: 6,
+    nom: 'sync_supabase',
+    // Quincaillerie de synchronisation offline-first (docs/07 §6.1, Phase 2). Deux colonnes
+    // par table synchronisée : `dirty` (à pousser au cloud) et `maj_le` (horloge LWW).
+    // `dirty DEFAULT 1` garantit que TOUTES les données déjà présentes d'un utilisateur installé
+    // sont poussées au premier rapprochement (rien n'est oublié). `photo_suivi` est hors périmètre
+    // (fichiers image). Deux tables de service : `sync_etat` (borne `derniereSync`) et
+    // `sync_suppressions` (tombstones — l'app ne fait de suppression dure que sur aliment_statut).
+    sql: `
+      ALTER TABLE profil            ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE profil            ADD COLUMN maj_le TEXT;
+      ALTER TABLE journal_crohn     ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE journal_crohn     ADD COLUMN maj_le TEXT;
+      ALTER TABLE seance_planifiee  ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE seance_planifiee  ADD COLUMN maj_le TEXT;
+      ALTER TABLE seance_realisee   ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE seance_realisee   ADD COLUMN maj_le TEXT;
+      ALTER TABLE mesure_corporelle ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE mesure_corporelle ADD COLUMN maj_le TEXT;
+      ALTER TABLE adaptation        ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE adaptation        ADD COLUMN maj_le TEXT;
+      ALTER TABLE consommation_jour ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE consommation_jour ADD COLUMN maj_le TEXT;
+      ALTER TABLE aliment_statut    ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE aliment_statut    ADD COLUMN maj_le TEXT;
+
+      CREATE TABLE IF NOT EXISTS sync_etat (
+        cle    TEXT PRIMARY KEY,   -- ex: 'derniereSync'
+        valeur TEXT NOT NULL
+      );
+
+      -- Tombstones : une suppression dure (aliment_statut) laisse une trace pour que
+      -- l'effacement se propage aux autres appareils (et ne soit pas « ressuscité » par
+      -- un pull plus ancien). dirty=1 = reste à pousser.
+      CREATE TABLE IF NOT EXISTS sync_suppressions (
+        entite TEXT NOT NULL,
+        cle    TEXT NOT NULL,
+        maj_le TEXT,
+        dirty  INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (entite, cle)
+      );
+    `,
+  },
 ];
 
 /** Version cible = plus haute migration connue. */

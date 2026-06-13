@@ -160,8 +160,40 @@ Règles **déterministes** ; une seule adaptation est appliquée par jour selon 
       (PBKDF2-SHA256, `node-forge`) via `app/reglages.tsx`. Couche pure testée (chiffrement,
       format de sauvegarde, génération du rapport).
 - [ ] **Incrément 7** — Intégration santé opt-in (Health Connect / HealthKit, lecture seule).
+- [x] **Incrément 8** — Fondations de la personnalisation : **baseline** douleur 28 j
+      (`src/domaine/baseline.ts` — médiane + MAD, démarrage à froid), **score de forme** 0-100
+      décomposé (`src/domaine/scoreForme.ts` — 4 niveaux gradués), **charge d'entraînement**
+      (`src/domaine/chargeEntrainement.ts` — ACWR, monotonie, contrainte), moteur d'adaptation
+      v2 (règle `lisser_charge`, niveaux `normale`→`moderee`→`allegee`→`repos`, migration 2) et
+      UI (carte forme `app/forme.tsx`, écran « Mes seuils » `app/seuils.tsx`).
+- [x] **Incrément 9** — Coaching de séance : **double progression** par exercice
+      (`src/domaine/progressionExercice.ts` — fourchettes de reps, paliers de charge par groupe
+      musculaire, plateaux, reprise après absence), **allures personnalisées** dérivées de la VMA
+      (`src/domaine/allures.ts` — tests 3000 m / demi-Cooper, EF, 30/30, 400 m), **mode séance
+      guidée** (`app/seance.tsx` — déroulé par exercice, timers repos/30-30/gainage, haptique,
+      `expo-keep-awake`, récap 3 taps) et **journal express** (< 10 s : pré-positionnement sur la
+      veille, « identique à hier », tags par récence, saisie rétroactive limitée à hier).
+- [x] **Incrément 10** — Insights : **corrélations** symptômes ↔ déclencheurs
+      (`src/domaine/correlations.ts` — tags ↔ poussée 48 h, ratio sourcé, garde-fous 5 occ. + 30 j),
+      **records personnels** (`src/domaine/records.ts` — 1RM Epley, 3000 m, plus longue sortie,
+      allure EF, séries de journal), **tendances** (`src/domaine/tendances.ts` — moyenne mobile
+      poids, charge hebdo sRPE + ACWR, santé ↔ charge, heatmap forme, observance avec grâce
+      hebdomadaire) et **bilan hebdo** (`src/domaine/bilanHebdo.ts`). UI : écran **Tendances**
+      (`app/tendances.tsx` — heatmap, charge & santé, poids lissé, records, corrélations), écran
+      **Bilan** (`app/bilan.tsx`), notification du dimanche, rapport gastro enrichi (§3.6 :
+      baseline + tendance douleur, table des déclencheurs avec effectifs).
+- [x] **Incrément 11** — Plan vivant : **replanification par glissement** et **protocole de
+      reprise post-poussée** (`src/domaine/replanification.ts` — `glisserProgramme`,
+      `programmeReprisePostPoussee`, `suggererModePousse`, `peutSortirDePoussee`), **mode poussée**
+      (règle 0 du moteur, niveau maintien minimal ; migration 3 : `profil.mode_pousse` +
+      `date_debut_pousse`, CHECK `semaine` levé). UI : bannière de suggestion/activation +
+      reprise validée par paliers (tableau de bord, écran « Mes seuils »).
+- [x] **Incrément 12 (partiel)** — Finitions : écran **« Comment ça marche »** (`app/apropos.tsx`,
+      transparence des règles + cadre médical). _Hors environnement de dev (à valider sur device) :
+      widget Android (build EAS), audit accessibilité AA et rendu AMOLED, validation visuelle des
+      nouveaux écrans et des notifications._
 
-> Couches métier et données vérifiables immédiatement via `npm test` (**61 tests**),
+> Couches métier et données vérifiables immédiatement via `npm test` (**181 tests**),
 > `npm run typecheck` et `npm run lint` (0 erreur). Les écrans se valident sur device :
 > `npx expo start` → `a`.
 

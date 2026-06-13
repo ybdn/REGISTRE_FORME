@@ -4,10 +4,18 @@ import type { TypeSeance } from './types';
 // Bibliothèque de modèles de séances éditables. Les circuits Freeletics sont adaptés
 // MICI : aucune hyperpression abdominale ni manœuvre de Valsalva sous charge.
 
+/** Groupe musculaire d'un exercice — pilote l'incrément de charge de la double progression. */
+export type GroupeMusculaire = 'bas' | 'haut' | 'gainage';
+
 export interface ExerciceModele {
   nom: string;
   series: number;
   reps: number;
+  /** Fourchette de répétitions de la double progression (8-12 par défaut en salle). */
+  repsMin?: number;
+  repsMax?: number;
+  /** `bas` : +5 kg/+5 % · `haut` : +2,5 kg/+2,5 % · `gainage` : jamais de charge. */
+  groupeMusculaire?: GroupeMusculaire;
   /** Charge de départ indicative (kg) pour les exercices de salle. */
   chargeDepartKg?: number;
   /** Progression linéaire par séance réussie. */
@@ -40,6 +48,9 @@ const salleA: ModeleSeance = {
       nom: 'Presse à cuisses',
       series: 3,
       reps: 10,
+      repsMin: 8,
+      repsMax: 12,
+      groupeMusculaire: 'bas',
       chargeDepartKg: 40,
       incrementKg: INCREMENT_CHARGE_KG,
     },
@@ -47,6 +58,9 @@ const salleA: ModeleSeance = {
       nom: 'Tirage poitrine (lat pulldown)',
       series: 3,
       reps: 10,
+      repsMin: 8,
+      repsMax: 12,
+      groupeMusculaire: 'haut',
       chargeDepartKg: 25,
       incrementKg: INCREMENT_CHARGE_KG,
     },
@@ -54,6 +68,9 @@ const salleA: ModeleSeance = {
       nom: 'Développé poitrine machine',
       series: 3,
       reps: 10,
+      repsMin: 8,
+      repsMax: 12,
+      groupeMusculaire: 'haut',
       chargeDepartKg: 20,
       incrementKg: INCREMENT_CHARGE_KG,
     },
@@ -61,6 +78,9 @@ const salleA: ModeleSeance = {
       nom: 'Leg curl machine',
       series: 3,
       reps: 12,
+      repsMin: 10,
+      repsMax: 15,
+      groupeMusculaire: 'bas',
       chargeDepartKg: 20,
       incrementKg: INCREMENT_CHARGE_KG,
     },
@@ -68,6 +88,7 @@ const salleA: ModeleSeance = {
       nom: 'Gainage planche (respiration libre)',
       series: 3,
       reps: 30,
+      groupeMusculaire: 'gainage',
       consigne: 'secondes, sans pousser le ventre',
     },
   ],
@@ -85,6 +106,9 @@ const salleB: ModeleSeance = {
       nom: 'Hack squat machine',
       series: 3,
       reps: 10,
+      repsMin: 8,
+      repsMax: 12,
+      groupeMusculaire: 'bas',
       chargeDepartKg: 30,
       incrementKg: INCREMENT_CHARGE_KG,
     },
@@ -92,6 +116,9 @@ const salleB: ModeleSeance = {
       nom: 'Rowing assis machine',
       series: 3,
       reps: 10,
+      repsMin: 8,
+      repsMax: 12,
+      groupeMusculaire: 'haut',
       chargeDepartKg: 25,
       incrementKg: INCREMENT_CHARGE_KG,
     },
@@ -99,6 +126,9 @@ const salleB: ModeleSeance = {
       nom: 'Développé épaules machine',
       series: 3,
       reps: 10,
+      repsMin: 8,
+      repsMax: 12,
+      groupeMusculaire: 'haut',
       chargeDepartKg: 15,
       incrementKg: INCREMENT_CHARGE_KG,
     },
@@ -106,10 +136,19 @@ const salleB: ModeleSeance = {
       nom: 'Extension mollets',
       series: 3,
       reps: 15,
+      repsMin: 12,
+      repsMax: 20,
+      groupeMusculaire: 'bas',
       chargeDepartKg: 40,
       incrementKg: INCREMENT_CHARGE_KG,
     },
-    { nom: 'Gainage latéral', series: 3, reps: 25, consigne: 'secondes par côté' },
+    {
+      nom: 'Gainage latéral',
+      series: 3,
+      reps: 25,
+      groupeMusculaire: 'gainage',
+      consigne: 'secondes par côté',
+    },
   ],
 };
 
@@ -189,7 +228,13 @@ const freeletics: ModeleSeance = {
     { nom: 'Fentes alternées', series: 4, reps: 12, consigne: 'par jambe' },
     { nom: 'Pompes (genoux si besoin)', series: 4, reps: 10 },
     { nom: 'Hip thrust au sol', series: 4, reps: 15 },
-    { nom: 'Planche dynamique', series: 3, reps: 30, consigne: 'secondes, respiration libre' },
+    {
+      nom: 'Planche dynamique',
+      series: 3,
+      reps: 30,
+      groupeMusculaire: 'gainage',
+      consigne: 'secondes, respiration libre',
+    },
   ],
 };
 

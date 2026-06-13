@@ -1,0 +1,15 @@
+version: 2
+updates:
+  # Garde les actions GitHub à jour automatiquement (évite les dépréciations de
+  # runtime type Node 20→24). Volontairement limité aux actions : npm est exclu
+  # car react-dom est épinglé à 19.1.0 (un bump casserait le build EAS).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(ci)"
+    labels: ["dépendances"]

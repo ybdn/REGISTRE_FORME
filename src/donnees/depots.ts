@@ -12,6 +12,16 @@ import type * as SQLite from 'expo-sqlite';
 
 // Dépôts (repositories) : seul point d'accès aux tables. Conversion ligne SQL ↔ modèle domaine.
 // Toutes les requêtes sont paramétrées (anti-injection) et restent locales.
+//
+// Sync (docs/07 §6.1) : chaque écriture pose `dirty = 1` et `maj_le` (horodatage LWW) pour
+// que le SyncManager sache quoi pousser. La suppression dure (aliment_statut) laisse un
+// tombstone dans `sync_suppressions`. Les convertisseurs ligne→domaine sont exportés : la
+// couche sync les réutilise pour produire le `contenu` (identique à celui de depotSupabase).
+
+/** Horodatage d'écriture (ISO 8601 UTC), aligné sur le format `timestamptz` de Supabase. */
+export function maintenant(): string {
+  return new Date().toISOString();
+}
 
 export interface MesureCorporelle {
   date: string;
@@ -82,12 +92,12 @@ export async function enregistrerJournal(
   e: EntreeJournal,
 ): Promise<void> {
   await db.runAsync(
-    `INSERT INTO journal_crohn (date, douleur, energie, digestion, nb_selles, ballonnements, tags, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO journal_crohn (date, douleur, energie, digestion, nb_selles, ballonnements, tags, note, dirty, maj_le)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
      ON CONFLICT(date) DO UPDATE SET
        douleur=excluded.douleur, energie=excluded.energie, digestion=excluded.digestion,
        nb_selles=excluded.nb_selles, ballonnements=excluded.ballonnements,
-       tags=excluded.tags, note=excluded.note`,
+       tags=excluded.tags, note=excluded.note, dirty=1, maj_le=excluded.maj_le`,
     [
       e.date,
       e.douleur,
@@ -97,6 +107,7 @@ export async function enregistrerJournal(
       e.ballonnements ? 1 : 0,
       JSON.stringify(e.tags),
       e.note ?? null,
+      maintenant(),
     ],
   );
 }
@@ -114,7 +125,7 @@ export async function lireJournal(
   return lignes.map(versEntreeJournal);
 }
 
-interface JournalRow {
+export interface JournalRow {
   date: string;
   douleur: number;
   energie: number;
@@ -125,7 +136,7 @@ interface JournalRow {
   note: string | null;
 }
 
-function versEntreeJournal(r: JournalRow): EntreeJournal {
+export function versEntreeJournal(r: JournalRow): EntreeJournal {
   return {
     date: r.date,
     douleur: r.douleur,
@@ -145,10 +156,10 @@ export async function enregistrerConsommation(
   c: ConsommationJour,
 ): Promise<void> {
   await db.runAsync(
-    `INSERT INTO consommation_jour (date, aliments)
-     VALUES (?, ?)
-     ON CONFLICT(date) DO UPDATE SET aliments=excluded.aliments`,
-    [c.date, JSON.stringify(c.aliments)],
+    `INSERT INTO consommation_jour (date, aliments, dirty, maj_le)
+     VALUES (?, ?, 1, ?)
+     ON CONFLICT(date) DO UPDATE SET aliments=excluded.aliments, dirty=1, maj_le=excluded.maj_le`,
+    [c.date, JSON.stringify(c.aliments), maintenant()],
   );
 }
 
@@ -165,12 +176,12 @@ export async function lireConsommations(
   return lignes.map(versConsommation);
 }
 
-interface ConsommationRow {
+export interface ConsommationRow {
   date: string;
   aliments: string;
 }
 
-function versConsommation(r: ConsommationRow): ConsommationJour {
+export function versConsommation(r: ConsommationRow): ConsommationJour {
   return { date: r.date, aliments: JSON.parse(r.aliments) as string[] };
 }
 
@@ -179,9 +190,15 @@ export async function definirStatutAliment(
   s: StatutAlimentManuel,
 ): Promise<void> {
   await db.runAsync(
-    'INSERT OR REPLACE INTO aliment_statut (aliment, statut, date_maj) VALUES (?, ?, ?)',
-    [s.aliment, s.statut, s.dateMaj],
+    'INSERT OR REPLACE INTO aliment_statut (aliment, statut, date_maj, dirty, maj_le) VALUES (?, ?, ?, 1, ?)',
+    [s.aliment, s.statut, s.dateMaj, maintenant()],
   );
+  // Réactiver un aliment annule un éventuel tombstone en attente (sinon la suppression
+  // précédente repousserait l'effacement par-dessus la réactivation).
+  await db.runAsync('DELETE FROM sync_suppressions WHERE entite = ? AND cle = ?', [
+    'aliment_statut',
+    s.aliment,
+  ]);
 }
 
 export async function supprimerStatutAliment(
@@ -189,19 +206,33 @@ export async function supprimerStatutAliment(
   aliment: string,
 ): Promise<void> {
   await db.runAsync('DELETE FROM aliment_statut WHERE aliment = ?', [aliment]);
+  // Tombstone : la suppression doit remonter au cloud puis redescendre sur les autres appareils.
+  await db.runAsync(
+    `INSERT OR REPLACE INTO sync_suppressions (entite, cle, maj_le, dirty)
+     VALUES (?, ?, ?, 1)`,
+    ['aliment_statut', aliment, maintenant()],
+  );
+}
+
+export interface StatutRow {
+  aliment: string;
+  statut: string;
+  date_maj: string;
+}
+
+export function versStatutAliment(r: StatutRow): StatutAlimentManuel {
+  return {
+    aliment: r.aliment,
+    statut: r.statut as StatutAlimentManuel['statut'],
+    dateMaj: r.date_maj,
+  };
 }
 
 export async function lireStatutsAliments(
   db: SQLite.SQLiteDatabase,
 ): Promise<StatutAlimentManuel[]> {
-  const lignes = await db.getAllAsync<{ aliment: string; statut: string; date_maj: string }>(
-    'SELECT * FROM aliment_statut ORDER BY aliment',
-  );
-  return lignes.map((r) => ({
-    aliment: r.aliment,
-    statut: r.statut as StatutAlimentManuel['statut'],
-    dateMaj: r.date_maj,
-  }));
+  const lignes = await db.getAllAsync<StatutRow>('SELECT * FROM aliment_statut ORDER BY aliment');
+  return lignes.map(versStatutAliment);
 }
 
 // ── Séances réalisées ───────────────────────────────────────────────────────
@@ -212,8 +243,8 @@ export async function enregistrerSeance(
 ): Promise<void> {
   await db.runAsync(
     `INSERT OR REPLACE INTO seance_realisee
-       (id, date, type, variante, rpe, duree_min, distance_km, temps_sec, charges, ressenti_digestif, note, source, id_externe)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, date, type, variante, rpe, duree_min, distance_km, temps_sec, charges, ressenti_digestif, note, source, id_externe, dirty, maj_le)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
     [
       s.id,
       s.date,
@@ -228,6 +259,7 @@ export async function enregistrerSeance(
       s.note ?? null,
       s.source ?? 'app',
       s.idExterne ?? null,
+      maintenant(),
     ],
   );
 }
@@ -257,7 +289,7 @@ export async function lireSeances(
   return lignes.map(versSeanceRealisee);
 }
 
-interface SeanceRow {
+export interface SeanceRow {
   id: string;
   date: string;
   type: SeanceRealisee['type'];
@@ -273,7 +305,7 @@ interface SeanceRow {
   id_externe: string | null;
 }
 
-function versSeanceRealisee(r: SeanceRow): SeanceRealisee {
+export function versSeanceRealisee(r: SeanceRow): SeanceRealisee {
   return {
     id: r.id,
     date: r.date,
@@ -293,7 +325,7 @@ function versSeanceRealisee(r: SeanceRow): SeanceRealisee {
 
 // ── Mesures corporelles ─────────────────────────────────────────────────────
 
-interface MesureRow {
+export interface MesureRow {
   date: string;
   poids_kg: number | null;
   bras_g_cm: number | null;
@@ -304,7 +336,7 @@ interface MesureRow {
   cuisses_cm: number | null;
 }
 
-function versMesure(r: MesureRow): MesureCorporelle {
+export function versMesure(r: MesureRow): MesureCorporelle {
   return {
     date: r.date,
     poidsKg: r.poids_kg ?? undefined,
@@ -336,8 +368,8 @@ export async function enregistrerMesure(
 ): Promise<void> {
   await db.runAsync(
     `INSERT OR REPLACE INTO mesure_corporelle
-       (date, poids_kg, bras_g_cm, bras_d_cm, torse_cm, ventre_cm, hanches_cm, cuisses_cm)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (date, poids_kg, bras_g_cm, bras_d_cm, torse_cm, ventre_cm, hanches_cm, cuisses_cm, dirty, maj_le)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
     [
       m.date,
       m.poidsKg ?? null,
@@ -347,6 +379,7 @@ export async function enregistrerMesure(
       m.ventreCm ?? null,
       m.hanchesCm ?? null,
       m.cuissesCm ?? null,
+      maintenant(),
     ],
   );
 }

@@ -13,7 +13,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Connexion from './connexion';
 
@@ -60,6 +60,15 @@ export default function Layout() {
       setErreurInit(err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err));
     });
   }, [initialiser, session]);
+
+  // Mobile : synchronisation au retour au premier plan (no-op si non connecté à la sync cloud).
+  useEffect(() => {
+    if (SUR_WEB) return;
+    const sub = AppState.addEventListener('change', (etatApp) => {
+      if (etatApp === 'active') void useMagasin.getState().synchroniserMaintenant();
+    });
+    return () => sub.remove();
+  }, []);
 
   // On ne bloque plus sur les polices : une erreur de police laisse passer (fallback système).
   const policesOk = policesPretes || !!erreurPolices;

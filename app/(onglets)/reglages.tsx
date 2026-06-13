@@ -7,12 +7,44 @@ import {
   LigneNavigation,
   SousTitre,
 } from '@/design/composants';
-import { couleurs } from '@/design/theme';
-import { useMagasin } from '@/etat/magasin';
+import { couleurs, espace } from '@/design/theme';
+import { type StatutSync, useMagasin } from '@/etat/magasin';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+
+/** Libellé lisible de l'état de synchronisation. */
+function libelleSync(statut: StatutSync, derniere: string | null): string {
+  switch (statut) {
+    case 'enCours':
+      return 'Synchronisation en cours…';
+    case 'ok':
+      return derniere ? `À jour — ${new Date(derniere).toLocaleString('fr-FR')}` : 'À jour';
+    case 'erreur':
+      return 'Échec de la dernière synchronisation';
+    case 'confirmationRequise':
+      return 'Premier rapprochement à confirmer';
+    default:
+      return 'Connecté';
+  }
+}
+
+/** Couleur de la pastille d'état de synchronisation. */
+function couleurSync(statut: StatutSync): string {
+  switch (statut) {
+    case 'ok':
+      return couleurs.freeletics;
+    case 'erreur':
+      return couleurs.alerte;
+    case 'enCours':
+      return couleurs.salle;
+    case 'confirmationRequise':
+      return couleurs.course;
+    default:
+      return couleurs.texteAttenue;
+  }
+}
 
 /** Extrait un message d'erreur affichable (ErreurSauvegarde porte déjà un message rédigé). */
 function messageErreur(e: unknown): string {
@@ -22,6 +54,14 @@ function messageErreur(e: unknown): string {
 export default function EcranReglages() {
   const router = useRouter();
   const { exporterSauvegarde, importerSauvegarde, genererRapport } = useMagasin();
+  const sync = useMagasin((e) => e.sync);
+  const connecterSync = useMagasin((e) => e.connecterSync);
+  const deconnecterSync = useMagasin((e) => e.deconnecterSync);
+  const synchroniserMaintenant = useMagasin((e) => e.synchroniserMaintenant);
+  const ignorerRapprochement = useMagasin((e) => e.ignorerRapprochement);
+
+  const [emailSync, setEmailSync] = useState('');
+  const [mdpSync, setMdpSync] = useState('');
 
   const [passExport, setPassExport] = useState('');
   const [passExport2, setPassExport2] = useState('');
@@ -103,9 +143,82 @@ export default function EcranReglages() {
         onPress={() => router.push('/sante-connect')}
       />
 
+      {/* Synchronisation cloud (opt-in, mobile) — docs/07 Phase 2. */}
+      {sync.disponible ? (
+        <Carte>
+          <SousTitre>Synchronisation cloud</SousTitre>
+          {sync.connecte ? (
+            <>
+              <Corps>
+                Connecté{sync.email ? ` (${sync.email})` : ''}. Tes saisies remontent au cloud et
+                redescendent sur tes autres appareils. Le moteur reste 100 % sur l’appareil.
+              </Corps>
+              <View style={styles.ligneSync}>
+                <View style={[styles.pastille, { backgroundColor: couleurSync(sync.statut) }]} />
+                <Text style={styles.etatSync}>{libelleSync(sync.statut, sync.derniere)}</Text>
+              </View>
+              {sync.statut === 'erreur' && sync.message ? (
+                <Text style={styles.erreurSync}>{sync.message}</Text>
+              ) : null}
+
+              {sync.statut === 'confirmationRequise' ? (
+                <Carte style={styles.carteErreur}>
+                  <Corps>
+                    Cet appareil et le cloud contiennent déjà des données. Fusionner peut écraser
+                    des saisies si la même journée a été modifiée des deux côtés. Pense à exporter
+                    une sauvegarde avant.
+                  </Corps>
+                  <Bouton
+                    titre="Fusionner avec le cloud"
+                    couleur={couleurs.course}
+                    onPress={() => void synchroniserMaintenant(true)}
+                  />
+                  <Bouton titre="Plus tard" variante="secondaire" onPress={ignorerRapprochement} />
+                </Carte>
+              ) : (
+                <Bouton
+                  titre={sync.statut === 'enCours' ? 'Synchronisation…' : 'Synchroniser maintenant'}
+                  couleur={couleurs.freeletics}
+                  disabled={sync.statut === 'enCours'}
+                  onPress={() => void synchroniserMaintenant()}
+                />
+              )}
+              <Bouton
+                titre="Se déconnecter"
+                variante="secondaire"
+                onPress={() => void deconnecterSync()}
+              />
+            </>
+          ) : (
+            <>
+              <Corps>
+                Connecte-toi à ton compte pour synchroniser tes données entre le mobile et le web.
+                Déconnecté, l’app reste 100 % locale.
+              </Corps>
+              <Champ
+                libelle="E-mail"
+                valeur={emailSync}
+                onChange={setEmailSync}
+                placeholder="toi@exemple.fr"
+              />
+              <Champ libelle="Mot de passe" valeur={mdpSync} onChange={setMdpSync} secret />
+              {sync.statut === 'erreur' && sync.message ? (
+                <Text style={styles.erreurSync}>{sync.message}</Text>
+              ) : null}
+              <Bouton
+                titre={sync.statut === 'enCours' ? 'Connexion…' : 'Se connecter'}
+                couleur={couleurs.freeletics}
+                disabled={sync.statut === 'enCours'}
+                onPress={() => void connecterSync({ email: emailSync.trim(), motDePasse: mdpSync })}
+              />
+            </>
+          )}
+        </Carte>
+      ) : null}
+
       <Corps>
-        Toutes ces actions restent locales : rien ne transite par un serveur. Le partage utilise la
-        feuille système de ton téléphone.
+        Les sauvegardes, le rapport et l’import de séances restent locaux : rien ne transite par un
+        serveur. Le partage utilise la feuille système de ton téléphone.
       </Corps>
 
       {retour ? (
@@ -195,4 +308,13 @@ export default function EcranReglages() {
 const styles = StyleSheet.create({
   carteSucces: { borderColor: couleurs.course },
   carteErreur: { borderColor: couleurs.sante },
+  ligneSync: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: espace.sm,
+    marginVertical: espace.xs,
+  },
+  pastille: { width: 10, height: 10, borderRadius: 5 },
+  etatSync: { color: couleurs.texteAttenue, fontSize: 13 },
+  erreurSync: { color: couleurs.sante, fontSize: 13, marginBottom: espace.sm },
 });

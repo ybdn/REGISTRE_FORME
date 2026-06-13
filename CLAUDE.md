@@ -33,6 +33,7 @@ app/            Écrans Expo Router — app/(onglets)/ = tab bar (Aujourd'hui, J
 src/etat/       magasin.ts — UNIQUE store Zustand : colle UI ↔ données (via l'interface Depot), état dérivé
 src/donnees/    Persistance derrière l'interface `Depot` (depot.ts) : depotSqlite (mobile, expo-sqlite),
                 depotSupabase (web online, cf. docs/07), depotMemoire (tests). Auth : auth.ts + supabaseClient.ts.
+                sync/ = synchro mobile offline-first LWW (syncManager pur + registreSync + transportSupabase).
                 Services Expo (notifications, PDF, sauvegarde chiffrée) avec shims `.web.ts`.
 src/domaine/    Logique métier PURE — aucune dépendance Expo, 100 % testable Vitest
 src/design/     theme.ts (couleurs/typo/espaces) + composants.tsx (Ecran, Carte, Bouton, Titre…)
@@ -95,8 +96,10 @@ Migrations versionnées dans `src/donnees/schema.ts` via `PRAGMA user_version`.
   fonctionnalité (la feuille de route est dans `05`, les specs du moteur v2 dans `02`).
 - `docs/07` = plan d'architecture du **portage web (GitHub Pages) + sync Supabase** (auth compte
   unique, RLS, chiffrement E2EE, plan en 5 phases). Lire avant toute tâche liée au web ou au cloud.
-  **Phases 0 et 1 livrées** : interface `Depot` (depot.ts) + depotSqlite/depotSupabase/depotMemoire,
+  **Phases 0, 1 et 2 livrées** : interface `Depot` (depot.ts) + depotSqlite/depotSupabase/depotMemoire,
   auth + écran connexion, schéma Supabase (`supabase/schema.sql`) + RLS, shims `.web.ts`, déploiement
-  GitHub Pages. **Reste à faire** : Phase 2 (sync mobile offline-first : migration SQLite v6
-  `dirty`/`maj_le` + SyncManager LWW), Phase 3 (E2EE), Phase 4 (offline web).
+  GitHub Pages, **sync mobile offline-first** (migration SQLite v6 `dirty`/`maj_le` + `sync_etat`/
+  `sync_suppressions` ; `src/donnees/sync/` = SyncManager LWW pur + registre + transport Supabase ;
+  déclencheurs démarrage/foreground/post-écriture ; carte sync dans Réglages). **Reste à faire** :
+  Phase 3 (E2EE + persistance de session mobile), Phase 4 (offline web).
 - Ne jamais explorer `node_modules/` ; `grep` ciblé plutôt que lecture de répertoires entiers.

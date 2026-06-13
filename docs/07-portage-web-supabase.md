@@ -425,22 +425,23 @@ purement statique sans backend d'envoi. Reporté ; sur web, `notifications.web.t
 Chaque phase est livrable et laisse l'app dans un état cohérent. `typecheck` + `lint` + `test`
 doivent passer à la sortie de chaque phase (rappel `CLAUDE.md`).
 
-### Phase 0 — Découplage de la persistance *(prérequis, sans réseau)*
-- [ ] Extraire l'interface `Depot` (`src/donnees/depot.ts`) couvrant toutes les opérations du store.
-- [ ] Refactorer `depots.ts` + `profil.ts` en `depotSqlite.ts` (clôture sur `db`, plus de paramètre).
-- [ ] Injecter le `Depot` dans `magasin.ts` (suppression des imports SQLite en dur).
-- [ ] Adapter les tests existants ; ajouter un `depotMemoire.ts` (fake en RAM) pour tester le store.
+### Phase 0 — Découplage de la persistance *(prérequis, sans réseau)* ✅ LIVRÉE
+- [x] Extraire l'interface `Depot` (`src/donnees/depot.ts`) couvrant toutes les opérations du store.
+- [x] Refactorer `depots.ts` + `profil.ts` en `depotSqlite.ts` (clôture sur `db`, plus de paramètre).
+- [x] Injecter le `Depot` dans `magasin.ts` (suppression des imports SQLite en dur).
+- [x] Adapter les tests existants ; ajouter un `depotMemoire.ts` (fake en RAM) pour tester le store.
 - **Sortie :** mobile fonctionne identiquement, store testable sans émulateur. *Aucune dépendance
   Supabase encore.*
 
-### Phase 1 — Web online + Auth + Supabase
-- [ ] Créer le projet Supabase (région UE), exécuter le schéma §5.1 + RLS §5.2.
-- [ ] Configurer Auth §5.3, créer le compte, désactiver les inscriptions.
-- [ ] `supabaseClient.ts` + `auth.ts` (connexion / déconnexion / session persistée).
-- [ ] `depotSupabase.ts` implémentant l'interface `Depot` (lit/écrit `enregistrements`).
-- [ ] Écran de connexion (`app/connexion.tsx`) + garde de session dans `_layout.tsx`.
-- [ ] Shims web §8.2 ; build `expo export -p web` ; pipeline GitHub Pages §8.3.
+### Phase 1 — Web online + Auth + Supabase ✅ LIVRÉE
+- [x] Créer le projet Supabase (région UE), exécuter le schéma §5.1 + RLS §5.2.
+- [x] Configurer Auth §5.3, créer le compte, désactiver les inscriptions.
+- [x] `supabaseClient.ts` + `auth.ts` (connexion / déconnexion / session persistée).
+- [x] `depotSupabase.ts` implémentant l'interface `Depot` (lit/écrit `enregistrements`).
+- [x] Écran de connexion (`app/connexion.tsx`) + garde de session dans `_layout.tsx`.
+- [x] Shims web §8.2 ; build `expo export -p web` ; pipeline GitHub Pages §8.3.
 - **Sortie :** app web déployée, connexion fonctionnelle, données lues/écrites dans Supabase.
+- **Validation :** smoke test RLS OK (lecture/écriture anonymes bloquées) + flux connecté testé en local.
 
 ### Phase 2 — Synchronisation mobile (offline‑first)
 - [ ] Migration SQLite `version: 6` (§6.1 : colonnes `dirty`/`maj_le`, table `sync_etat`).

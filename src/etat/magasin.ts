@@ -23,42 +23,24 @@ import {
   numeroSemaine,
   obtenirModele,
 } from '@/domaine';
-import { ouvrirBase } from '@/donnees/db';
-import {
-  type MesureCorporelle,
-  type SeancePlanifieeStockee,
-  annulerAdaptation as annulerAdaptationDb,
-  definirStatutAliment as definirStatutAlimentDb,
-  enregistrerAdaptation,
-  enregistrerConsommation,
-  enregistrerJournal,
-  enregistrerMesure,
-  enregistrerSeance,
-  lireConsommations,
-  lireIdsExternes,
-  lireJournal,
-  lireMesures,
-  lireSeances,
-  lireSeancesPlanifieesSemaine,
-  lireStatutsAliments,
-  supprimerStatutAliment,
-} from '@/donnees/depots';
+import type { Depot } from '@/donnees/depot';
+import type { MesureCorporelle, SeancePlanifieeStockee } from '@/donnees/depots';
+import { creerDepotParDefaut } from '@/donnees/fabriqueDepot';
 import { synchroniserNotifications } from '@/donnees/notifications';
-import { type Profil, enregistrerProfil, lireProfil } from '@/donnees/profil';
+import type { Profil } from '@/donnees/profil';
 import { genererRapportPdf } from '@/donnees/rapportPdf';
 import { lireSessionsExternes, santeConnectDisponible } from '@/donnees/santeConnect';
 import {
   exporterSauvegarde as exporterSauvegardeDb,
   importerSauvegarde as importerSauvegardeDb,
 } from '@/donnees/sauvegarde';
-import { seederProgramme } from '@/donnees/seed';
 import * as Crypto from 'expo-crypto';
-import type * as SQLite from 'expo-sqlite';
 import { create } from 'zustand';
 
-// Store applicatif unique (KISS). La base SQLite est gardée hors de l'état (non sérialisable).
+// Store applicatif unique (KISS). La persistance est gardée hors de l'état (non sérialisable)
+// et n'est connue qu'à travers l'interface `Depot` — le store ignore SQLite/Supabase (docs/07).
 
-let db: SQLite.SQLiteDatabase | null = null;
+let depot: Depot | null = null;
 // Garde anti-double-initialisation (StrictMode monte les effets deux fois en dev).
 let initEnCours: Promise<void> | null = null;
 
@@ -89,7 +71,8 @@ interface EtatApp {
   scoreFormeDuJour: ScoreForme | null;
   baselineDuJour: Baseline | null;
 
-  initialiser: () => Promise<void>;
+  /** `fabrique` injecte un `Depot` alternatif (tests, web) ; défaut = SQLite local. */
+  initialiser: (fabrique?: () => Promise<Depot>) => Promise<void>;
   creerProfil: (
     p: Omit<
       Profil,
@@ -129,84 +112,84 @@ export const useMagasin = create<EtatApp>((set, get) => ({
   scoreFormeDuJour: null,
   baselineDuJour: null,
 
-  async initialiser() {
+  async initialiser(fabrique = creerDepotParDefaut) {
     if (get().pret) return;
     if (initEnCours) return initEnCours;
     initEnCours = (async () => {
       set({ etape: 'ouverture base' });
-      db = await ouvrirBase();
+      depot = await fabrique();
       set({ etape: 'seed programme' });
-      await seederProgramme(db);
+      await depot.seederProgramme();
       set({ etape: 'lecture profil' });
-      const profil = await lireProfil(db);
+      const profil = await depot.lireProfil();
       const aujourdhui = aujourdhuiISO();
       set({ etape: 'recharge données' });
-      await recharger(set, db, profil, aujourdhui);
+      await recharger(set, depot, profil, aujourdhui);
       set({ pret: true, etape: 'prêt' });
     })();
     return initEnCours;
   },
 
   async creerProfil(p) {
-    if (!db) throw new Error('Base non initialisée');
+    if (!depot) throw new Error('Dépôt non initialisé');
     const profil: Profil = {
       ...p,
       disclaimerAccepte: true,
       dateAcceptationDisclaimer: aujourdhuiISO(),
       modePousse: false,
     };
-    await enregistrerProfil(db, profil);
-    await recharger(set, db, profil, get().aujourdhui);
+    await depot.enregistrerProfil(profil);
+    await recharger(set, depot, profil, get().aujourdhui);
   },
 
   async saisirJournal(e) {
-    if (!db) throw new Error('Base non initialisée');
-    await enregistrerJournal(db, e);
-    await recharger(set, db, get().profil, get().aujourdhui);
+    if (!depot) throw new Error('Dépôt non initialisé');
+    await depot.enregistrerJournal(e);
+    await recharger(set, depot, get().profil, get().aujourdhui);
   },
 
   async validerSeance(s) {
-    if (!db) throw new Error('Base non initialisée');
+    if (!depot) throw new Error('Dépôt non initialisé');
     const seance: SeanceRealisee = { ...s, id: Crypto.randomUUID() };
-    await enregistrerSeance(db, seance);
-    await recharger(set, db, get().profil, get().aujourdhui);
+    await depot.enregistrerSeance(seance);
+    await recharger(set, depot, get().profil, get().aujourdhui);
   },
 
   async enregistrerMesureCorporelle(m) {
-    if (!db) throw new Error('Base non initialisée');
-    await enregistrerMesure(db, m);
-    await recharger(set, db, get().profil, get().aujourdhui);
+    if (!depot) throw new Error('Dépôt non initialisé');
+    await depot.enregistrerMesure(m);
+    await recharger(set, depot, get().profil, get().aujourdhui);
   },
 
   async saisirConsommation(c) {
-    if (!db) throw new Error('Base non initialisée');
+    if (!depot) throw new Error('Dépôt non initialisé');
     // Noms normalisés et dédoublonnés dès la persistance (« Café  » = « café »),
     // pour ne jamais diviser les effectifs des corrélations.
     const aliments = [...new Set(c.aliments.map(normaliserAliment).filter((a) => a !== ''))];
-    await enregistrerConsommation(db, { date: c.date, aliments });
-    await recharger(set, db, get().profil, get().aujourdhui);
+    await depot.enregistrerConsommation({ date: c.date, aliments });
+    await recharger(set, depot, get().profil, get().aujourdhui);
   },
 
   async definirStatutAliment(aliment, statut) {
-    if (!db) throw new Error('Base non initialisée');
+    if (!depot) throw new Error('Dépôt non initialisé');
     const nom = normaliserAliment(aliment);
     if (statut === null) {
-      await supprimerStatutAliment(db, nom);
+      await depot.supprimerStatutAliment(nom);
     } else {
-      await definirStatutAlimentDb(db, { aliment: nom, statut, dateMaj: get().aujourdhui });
+      await depot.definirStatutAliment({ aliment: nom, statut, dateMaj: get().aujourdhui });
     }
-    await recharger(set, db, get().profil, get().aujourdhui);
+    await recharger(set, depot, get().profil, get().aujourdhui);
   },
 
   async annulerAdaptation() {
-    if (!db) return;
+    if (!depot) return;
     const id = get().idAdaptationDuJour;
-    if (id) await annulerAdaptationDb(db, id);
+    if (id) await depot.annulerAdaptation(id);
     set({ adaptationDuJour: null, idAdaptationDuJour: null });
   },
 
   async definirModePousse(actif) {
-    if (!db) throw new Error('Base non initialisée');
+    if (!depot) throw new Error('Dépôt non initialisé');
     const profil = get().profil;
     if (!profil) return;
     // Jamais d'application silencieuse : c'est l'utilisateur qui (dés)active.
@@ -215,28 +198,28 @@ export const useMagasin = create<EtatApp>((set, get) => ({
       modePousse: actif,
       dateDebutPousse: actif ? get().aujourdhui : undefined,
     };
-    await enregistrerProfil(db, maj);
-    await recharger(set, db, maj, get().aujourdhui);
+    await depot.enregistrerProfil(maj);
+    await recharger(set, depot, maj, get().aujourdhui);
   },
 
   async exporterSauvegarde(passphrase) {
-    if (!db) throw new Error('Base non initialisée');
-    await exporterSauvegardeDb(db, passphrase, get().aujourdhui);
+    if (!depot) throw new Error('Dépôt non initialisé');
+    await exporterSauvegardeDb(depot, passphrase, get().aujourdhui);
   },
 
   async importerSauvegarde(contenuChiffre, passphrase) {
-    if (!db) throw new Error('Base non initialisée');
-    await importerSauvegardeDb(db, contenuChiffre, passphrase);
+    if (!depot) throw new Error('Dépôt non initialisé');
+    await importerSauvegardeDb(depot, contenuChiffre, passphrase);
     // La base a été remplacée : on relit le profil et on recharge tout l'état dérivé.
-    const profil = await lireProfil(db);
-    await recharger(set, db, profil, get().aujourdhui);
+    const profil = await depot.lireProfil();
+    await recharger(set, depot, profil, get().aujourdhui);
   },
 
   async genererRapport() {
-    if (!db) throw new Error('Base non initialisée');
+    if (!depot) throw new Error('Dépôt non initialisé');
     const { aujourdhui, profil } = get();
     // Période par défaut : 90 derniers jours (un trimestre = horizon de consultation usuel).
-    await genererRapportPdf(db, profil, ajouterJours(aujourdhui, -90), aujourdhui);
+    await genererRapportPdf(depot, profil, ajouterJours(aujourdhui, -90), aujourdhui);
   },
 
   async santeConnectDisponible() {
@@ -244,20 +227,20 @@ export const useMagasin = create<EtatApp>((set, get) => ({
   },
 
   async importerSeancesExternes() {
-    if (!db) throw new Error('Base non initialisée');
+    if (!depot) throw new Error('Dépôt non initialisé');
     const { aujourdhui, profil } = get();
     const depuis = ajouterJours(aujourdhui, -FENETRE_IMPORT_SANTE_CONNECT_JOURS);
     const sessions = await lireSessionsExternes(depuis, aujourdhui);
-    const dejaImportes = await lireIdsExternes(db, 'sante_connect');
+    const dejaImportes = await depot.lireIdsExternes('sante_connect');
     const nouvelles = filtrerNouvellesSessions(sessions, dejaImportes);
     const fcMax = profil ? 220 - profil.age : undefined;
     for (const s of nouvelles) {
-      await enregistrerSeance(db, {
+      await depot.enregistrerSeance({
         ...mapperSessionExterne(s, { fcMax }),
         id: Crypto.randomUUID(),
       });
     }
-    await recharger(set, db, profil, aujourdhui);
+    await recharger(set, depot, profil, aujourdhui);
     return { importees: nouvelles.length, dejaPresentes: sessions.length - nouvelles.length };
   },
 
@@ -312,7 +295,7 @@ export const useMagasin = create<EtatApp>((set, get) => ({
 /** Recharge l'état dérivé depuis la base et recalcule l'adaptation du jour. */
 async function recharger(
   set: (partiel: Partial<EtatApp>) => void,
-  base: SQLite.SQLiteDatabase,
+  depot: Depot,
   profil: Profil | null,
   aujourdhui: string,
 ): Promise<void> {
@@ -322,12 +305,12 @@ async function recharger(
   const depuis = ajouterJours(aujourdhui, -120);
   const [journal, seances, mesures, consommations, statutsAliments, planifieesSemaine] =
     await Promise.all([
-      lireJournal(base, depuis),
-      lireSeances(base, depuis),
-      lireMesures(base, depuis),
-      lireConsommations(base, depuis),
-      lireStatutsAliments(base),
-      lireSeancesPlanifieesSemaine(base, semaineCourante),
+      depot.lireJournal(depuis),
+      depot.lireSeances(depuis),
+      depot.lireMesures(depuis),
+      depot.lireConsommations(depuis),
+      depot.lireStatutsAliments(),
+      depot.lireSeancesPlanifieesSemaine(semaineCourante),
     ]);
 
   let adaptationDuJour: Adaptation | null = null;
@@ -341,7 +324,7 @@ async function recharger(
     });
     if (adaptationDuJour.type !== 'aucune') {
       idAdaptationDuJour = `${aujourdhui}-${adaptationDuJour.type}`;
-      await enregistrerAdaptation(base, adaptationDuJour, idAdaptationDuJour, aujourdhui);
+      await depot.enregistrerAdaptation(adaptationDuJour, idAdaptationDuJour, aujourdhui);
     }
   }
 

@@ -1,0 +1,124 @@
+name: Release
+
+# Publie une release GitHub (tag + notes + APK + QR) à chaque montée de version.
+# Déclenché quand app.json change sur main ; n'agit que si la version y est nouvelle.
+on:
+  push:
+    branches: [main]
+    paths: ["app.json"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Détecter une nouvelle version
+        id: v
+        run: |
+          VERSION=$(jq -r '.expo.version' app.json)
+          TAG="v$VERSION"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG déjà présent — aucune release à créer."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nouvelle version : $TAG"
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Vérifier le secret EXPO_TOKEN
+        if: steps.v.outputs.go == 'true'
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Secret EXPO_TOKEN manquant. Ajoute-le : gh secret set EXPO_TOKEN"
+            exit 1
+          fi
+
+      - name: Installer Node
+        if: steps.v.outputs.go == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Installer EAS CLI
+        if: steps.v.outputs.go == 'true'
+        run: npm i -g eas-cli
+
+      - name: Build APK via EAS (profil preview)
+        if: steps.v.outputs.go == 'true'
+        id: build
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          # Build cloud, attend l'artefact, sortie JSON (node_modules non requis :
+          # EAS installe les dépendances côté serveur).
+          eas build --platform android --profile preview --non-interactive --wait --json > build.json
+          APK_URL=$(jq -r '.[0].artifacts.applicationArchiveUrl' build.json)
+          BUILD_URL=$(jq -r '.[0].artifacts.buildUrl // ("https://expo.dev/accounts/ybdnx/projects/registre-forme/builds/" + .[0].id)' build.json)
+          echo "apk_url=$APK_URL" >> "$GITHUB_OUTPUT"
+          echo "build_url=$BUILD_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Télécharger l'APK et générer le QR
+        if: steps.v.outputs.go == 'true'
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+          APK_URL: ${{ steps.build.outputs.apk_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y qrencode
+          APK_FILE="registre-forme-${TAG}.apk"
+          curl -fL -o "$APK_FILE" "$APK_URL"
+          # Le QR pointe vers le lien de download stable de l'asset GitHub (créé à l'étape suivante).
+          DL_URL="https://github.com/${REPO}/releases/download/${TAG}/${APK_FILE}"
+          qrencode -o qr.png -s 8 -m 2 "$DL_URL"
+          echo "APK_FILE=$APK_FILE" >> "$GITHUB_ENV"
+          echo "DL_URL=$DL_URL" >> "$GITHUB_ENV"
+
+      - name: Créer la release
+        if: steps.v.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.v.outputs.tag }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          BUILD_URL: ${{ steps.build.outputs.build_url }}
+        run: |
+          PREV=$(git tag --sort=-creatordate | head -1)
+          if [ -n "$PREV" ]; then
+            NOTES=$(gh api "repos/${REPO}/releases/generate-notes" -f tag_name="$TAG" -f previous_tag_name="$PREV" -f target_commitish="$SHA" --jq .body)
+          else
+            NOTES=$(gh api "repos/${REPO}/releases/generate-notes" -f tag_name="$TAG" -f target_commitish="$SHA" --jq .body)
+          fi
+          {
+            echo "## 📱 REGISTRE.FORME ${TAG}"
+            echo ""
+            echo "### Installation Android"
+            echo "- ⬇️ **[Télécharger l'APK](${DL_URL})**"
+            echo "- 📲 Scanner pour installer :"
+            echo ""
+            echo "![QR de téléchargement](https://github.com/${REPO}/releases/download/${TAG}/qr.png)"
+            echo ""
+            echo "- 🔧 Détails du build EAS : ${BUILD_URL}"
+            echo "- 🌐 Version web : _à venir (portage en cours — docs/07)_"
+            echo ""
+            echo "---"
+            echo "$NOTES"
+          } > body.md
+          gh release create "$TAG" "$APK_FILE" qr.png \
+            --target "$SHA" \
+            --title "REGISTRE.FORME ${TAG}" \
+            --notes-file body.md

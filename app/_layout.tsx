@@ -105,12 +105,17 @@ export default function Layout() {
           contentStyle: { backgroundColor: couleurs.fond },
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'REGISTRE.FORME' }} />
+        <Stack.Screen name="(onglets)" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="seance" options={{ title: 'Séance du jour' }} />
-        <Stack.Screen name="journal" options={{ title: 'Journal Crohn' }} />
+        <Stack.Screen name="seance-libre" options={{ title: 'Séance libre' }} />
+        <Stack.Screen name="forme" options={{ title: 'Forme du jour' }} />
+        <Stack.Screen name="seuils" options={{ title: 'Mes seuils' }} />
+        <Stack.Screen name="bilan" options={{ title: 'Bilan hebdo' }} />
+        <Stack.Screen name="apropos" options={{ title: 'Comment ça marche' }} />
+        <Stack.Screen name="alimentation" options={{ title: 'Alimentation' }} />
         <Stack.Screen name="mesures" options={{ title: 'Mesures' }} />
-        <Stack.Screen name="reglages" options={{ title: 'Réglages & données' }} />
+        <Stack.Screen name="sante-connect" options={{ title: 'Importer des séances' }} />
       </Stack>
     </SafeAreaProvider>
   );

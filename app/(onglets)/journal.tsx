@@ -1,33 +1,92 @@
-import { Bouton, Carte, Corps, Echelle, Ecran, SousTitre, Titre } from '@/design/composants';
+import {
+  Bouton,
+  Carte,
+  Chip,
+  Corps,
+  Echelle,
+  Ecran,
+  LigneNavigation,
+  Segments,
+  SousTitre,
+} from '@/design/composants';
 import { couleurs, espace, rayon, typo } from '@/design/theme';
+import { ajouterJours, entreeVeille, tagsParRecence } from '@/domaine';
+import type { EntreeJournal } from '@/domaine';
 import { useMagasin } from '@/etat/magasin';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const TAGS = ['repas-gras', 'repas-tardif', 'stress', 'sommeil-court', 'voyage', 'hydratation-ok'];
 
+// Journal express (doc 04 §4.2) : curseurs pré-positionnés sur la veille,
+// « identique à hier », tags récents en premier, saisie rétroactive limitée à hier.
+// Objectif : < 10 s.
+
+/** Valeurs initiales : l'entrée du jour ciblé, sinon les curseurs de la veille. */
+function valeursInitiales(existante: EntreeJournal | undefined, veille: EntreeJournal | undefined) {
+  const source = existante ?? veille;
+  return {
+    douleur: source?.douleur ?? 0,
+    energie: source?.energie ?? 3,
+    digestion: source?.digestion ?? 3,
+    // Seuls les curseurs sont pré-positionnés sur la veille ; le reste repart à neuf.
+    nbSelles: existante?.nbSelles ?? 1,
+    ballonnements: existante?.ballonnements ?? false,
+    tags: existante?.tags ?? [],
+    note: existante?.note ?? '',
+  };
+}
+
 export default function EcranJournal() {
   const router = useRouter();
   const { aujourdhui, journal, saisirJournal } = useMagasin();
-  const existante = journal.find((e) => e.date === aujourdhui);
+  const hier = ajouterJours(aujourdhui, -1);
 
-  const [douleur, setDouleur] = useState(existante?.douleur ?? 0);
-  const [energie, setEnergie] = useState(existante?.energie ?? 3);
-  const [digestion, setDigestion] = useState(existante?.digestion ?? 3);
-  const [nbSelles, setNbSelles] = useState(existante?.nbSelles ?? 1);
-  const [ballonnements, setBallonnements] = useState(existante?.ballonnements ?? false);
-  const [tags, setTags] = useState<string[]>(existante?.tags ?? []);
-  const [note, setNote] = useState(existante?.note ?? '');
+  // Saisie rétroactive explicite, limitée à hier (au-delà le signal est trop peu fiable).
+  const [dateCible, setDateCible] = useState(aujourdhui);
+  const existante = journal.find((e) => e.date === dateCible);
+  const veille = entreeVeille(journal, dateCible);
+
+  const [valeurs, setValeurs] = useState(() => valeursInitiales(existante, veille));
+  const { douleur, energie, digestion, nbSelles, ballonnements, tags, note } = valeurs;
+
+  const tagsOrdonnes = useMemo(() => tagsParRecence(journal, TAGS), [journal]);
+
+  function changerDate(date: string) {
+    if (date === dateCible) return;
+    setDateCible(date);
+    const entree = journal.find((e) => e.date === date);
+    setValeurs(valeursInitiales(entree, entreeVeille(journal, date)));
+  }
+
+  function poser<K extends keyof typeof valeurs>(cle: K, valeur: (typeof valeurs)[K]) {
+    setValeurs((v) => ({ ...v, [cle]: valeur }));
+  }
 
   function basculerTag(t: string) {
-    setTags((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+    poser('tags', tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t]);
+  }
+
+  /** Copie intégralement l'entrée de la veille (modifiable avant d'enregistrer). */
+  function identiqueAHier() {
+    if (!veille) return;
+    setValeurs({
+      douleur: veille.douleur,
+      energie: veille.energie,
+      digestion: veille.digestion,
+      nbSelles: veille.nbSelles,
+      ballonnements: veille.ballonnements,
+      tags: [...veille.tags],
+      note: '',
+    });
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }
 
   async function valider() {
     await saisirJournal({
-      date: aujourdhui,
+      date: dateCible,
       douleur,
       energie,
       digestion,
@@ -43,12 +102,30 @@ export default function EcranJournal() {
 
   return (
     <Ecran>
-      <Titre>Journal du jour</Titre>
-      <Corps>Moins de 20 secondes. Tes signaux pilotent l’adaptation de la séance.</Corps>
+      <Corps>Moins de 10 secondes. Tes signaux pilotent l’adaptation de la séance.</Corps>
+
+      <Segments
+        options={[
+          { valeur: aujourdhui, libelle: 'Aujourd’hui' },
+          { valeur: hier, libelle: 'Hier' },
+        ]}
+        valeur={dateCible}
+        onChange={changerDate}
+      />
+
+      {veille && !existante ? (
+        <Bouton titre="Identique à hier" variante="secondaire" onPress={identiqueAHier} />
+      ) : null}
 
       <Carte>
         <SousTitre>Douleur (0-10)</SousTitre>
-        <Echelle min={0} max={10} valeur={douleur} onChange={setDouleur} couleur={couleurs.sante} />
+        <Echelle
+          min={0}
+          max={10}
+          valeur={douleur}
+          onChange={(v) => poser('douleur', v)}
+          couleur={couleurs.sante}
+        />
         <Text style={styles.indice}>≥ 5 → séance allégée automatiquement.</Text>
       </Carte>
 
@@ -58,7 +135,7 @@ export default function EcranJournal() {
           min={1}
           max={5}
           valeur={energie}
-          onChange={setEnergie}
+          onChange={(v) => poser('energie', v)}
           couleur={couleurs.freeletics}
         />
         <Text style={styles.indice}>≤ 2 → séance allégée automatiquement.</Text>
@@ -70,7 +147,7 @@ export default function EcranJournal() {
           min={1}
           max={5}
           valeur={digestion}
-          onChange={setDigestion}
+          onChange={(v) => poser('digestion', v)}
           couleur={couleurs.salle}
         />
       </Carte>
@@ -82,12 +159,12 @@ export default function EcranJournal() {
           <View style={styles.stepperControles}>
             <Pressable
               style={styles.stepBtn}
-              onPress={() => setNbSelles((n) => Math.max(0, n - 1))}
+              onPress={() => poser('nbSelles', Math.max(0, nbSelles - 1))}
             >
               <Text style={styles.stepBtnTexte}>−</Text>
             </Pressable>
             <Text style={styles.stepValeur}>{nbSelles}</Text>
-            <Pressable style={styles.stepBtn} onPress={() => setNbSelles((n) => n + 1)}>
+            <Pressable style={styles.stepBtn} onPress={() => poser('nbSelles', nbSelles + 1)}>
               <Text style={styles.stepBtnTexte}>+</Text>
             </Pressable>
           </View>
@@ -95,7 +172,7 @@ export default function EcranJournal() {
         <Pressable
           accessibilityRole="switch"
           accessibilityState={{ checked: ballonnements }}
-          onPress={() => setBallonnements((v) => !v)}
+          onPress={() => poser('ballonnements', !ballonnements)}
           style={styles.toggle}
         >
           <View style={[styles.coche, ballonnements && styles.cocheActive]}>
@@ -108,22 +185,13 @@ export default function EcranJournal() {
       <Carte>
         <SousTitre>Contexte</SousTitre>
         <View style={styles.tags}>
-          {TAGS.map((t) => {
-            const actif = tags.includes(t);
-            return (
-              <Pressable
-                key={t}
-                onPress={() => basculerTag(t)}
-                style={[styles.tag, actif && styles.tagActif]}
-              >
-                <Text style={[styles.tagTexte, actif && styles.tagTexteActif]}>{t}</Text>
-              </Pressable>
-            );
-          })}
+          {tagsOrdonnes.map((t) => (
+            <Chip key={t} libelle={t} actif={tags.includes(t)} onPress={() => basculerTag(t)} />
+          ))}
         </View>
         <TextInput
           value={note}
-          onChangeText={setNote}
+          onChangeText={(v) => poser('note', v)}
           placeholder="Note libre (optionnel)"
           placeholderTextColor={couleurs.texteAttenue}
           style={styles.input}
@@ -132,6 +200,14 @@ export default function EcranJournal() {
       </Carte>
 
       <Bouton titre="Enregistrer" couleur={couleurs.sante} onPress={valider} />
+
+      <LigneNavigation
+        titre="Alimentation du jour"
+        detail="Coche ce que tu as mangé et bu"
+        icone="coffee"
+        couleur={couleurs.sante}
+        onPress={() => router.push('/alimentation')}
+      />
     </Ecran>
   );
 }
@@ -174,19 +250,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cocheActive: { backgroundColor: couleurs.sante },
-  cocheMarque: { color: '#0F141B', fontFamily: typo.titre, fontSize: 14 },
+  cocheMarque: { color: couleurs.encre, fontFamily: typo.titre, fontSize: 14 },
   toggleTexte: { fontFamily: typo.corps, fontSize: 14, color: couleurs.texte },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: espace.sm },
-  tag: {
-    paddingHorizontal: espace.md,
-    paddingVertical: espace.xs,
-    borderRadius: rayon.lg,
-    borderWidth: 1,
-    borderColor: couleurs.trait,
-  },
-  tagActif: { backgroundColor: couleurs.salle, borderColor: couleurs.salle },
-  tagTexte: { fontFamily: typo.corps, fontSize: 12, color: couleurs.texteAttenue },
-  tagTexteActif: { color: '#0F141B' },
   input: {
     fontFamily: typo.corps,
     fontSize: 14,

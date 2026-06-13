@@ -1,10 +1,10 @@
-import { Bouton, Carte, Corps, Ecran, SousTitre, Titre } from '@/design/composants';
+import { Bouton, Carte, Champ, Corps, Ecran, SousTitre, Titre } from '@/design/composants';
 import { couleurs, espace, rayon, typo } from '@/design/theme';
 import { aujourdhuiISO, estDateISO } from '@/domaine';
 import { useMagasin } from '@/etat/magasin';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 // Onboarding : profil minimal + acceptation OBLIGATOIRE du disclaimer médical.
 
@@ -83,47 +83,7 @@ export default function Onboarding() {
   );
 }
 
-function Champ({
-  libelle,
-  valeur,
-  onChange,
-  clavier = 'default',
-  placeholder,
-}: {
-  libelle: string;
-  valeur: string;
-  onChange: (v: string) => void;
-  clavier?: 'default' | 'numeric';
-  placeholder?: string;
-}) {
-  return (
-    <View style={styles.champ}>
-      <Text style={styles.champLibelle}>{libelle}</Text>
-      <TextInput
-        value={valeur}
-        onChangeText={onChange}
-        keyboardType={clavier}
-        placeholder={placeholder}
-        placeholderTextColor={couleurs.texteAttenue}
-        style={styles.input}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  champ: { gap: espace.xs },
-  champLibelle: { fontFamily: typo.corps, fontSize: 13, color: couleurs.texteAttenue },
-  input: {
-    fontFamily: typo.donnees,
-    fontSize: 16,
-    color: couleurs.texte,
-    borderWidth: 1,
-    borderColor: couleurs.trait,
-    borderRadius: rayon.sm,
-    paddingHorizontal: espace.md,
-    paddingVertical: espace.sm,
-  },
   disclaimerCarte: { borderColor: couleurs.sante },
   case: { flexDirection: 'row', alignItems: 'center', gap: espace.sm, marginTop: espace.sm },
   coche: {
@@ -136,7 +96,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cocheActive: { backgroundColor: couleurs.sante },
-  cocheMarque: { color: '#0F141B', fontFamily: typo.titre, fontSize: 14 },
+  cocheMarque: { color: couleurs.encre, fontFamily: typo.titre, fontSize: 14 },
   caseTexte: { flex: 1, fontFamily: typo.corps, fontSize: 13, color: couleurs.texte },
   erreur: { fontFamily: typo.corps, fontSize: 13, color: couleurs.alerte },
 });

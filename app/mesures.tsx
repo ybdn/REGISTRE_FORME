@@ -1,9 +1,18 @@
-import { Bouton, Carte, Corps, Courbe, Ecran, SousTitre, Titre } from '@/design/composants';
-import { couleurs, espace, rayon, typo } from '@/design/theme';
+import {
+  Bouton,
+  Carte,
+  Champ,
+  Corps,
+  Courbe,
+  Ecran,
+  LigneInfo,
+  SousTitre,
+} from '@/design/composants';
+import { couleurs, espace, typo } from '@/design/theme';
 import { useMagasin } from '@/etat/magasin';
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 /** Convertit une saisie texte en nombre, ou `undefined` si vide/invalide (pas de 0 parasite). */
 function nombreOuVide(v: string): number | undefined {
@@ -46,12 +55,11 @@ export default function EcranMesures() {
 
   return (
     <Ecran>
-      <Titre>Mesures corporelles</Titre>
       <Corps>Poids hebdo, mensurations bi-hebdo. Tout champ est facultatif.</Corps>
 
       <Carte>
         <SousTitre>Poids</SousTitre>
-        <Champ libelle="Poids (kg)" valeur={poids} onChange={setPoids} />
+        <Champ libelle="Poids (kg)" valeur={poids} onChange={setPoids} clavier="numeric" />
         {courbePoids.length >= 2 ? (
           <View style={styles.courbeBloc}>
             <Courbe valeurs={courbePoids} couleur={couleurs.salle} />
@@ -72,12 +80,25 @@ export default function EcranMesures() {
       <Carte>
         <SousTitre>Mensurations (cm)</SousTitre>
         <View style={styles.grille}>
-          <Champ libelle="Bras gauche" valeur={brasG} onChange={setBrasG} style={styles.demi} />
-          <Champ libelle="Bras droit" valeur={brasD} onChange={setBrasD} style={styles.demi} />
-          <Champ libelle="Torse" valeur={torse} onChange={setTorse} style={styles.demi} />
-          <Champ libelle="Ventre" valeur={ventre} onChange={setVentre} style={styles.demi} />
-          <Champ libelle="Hanches" valeur={hanches} onChange={setHanches} style={styles.demi} />
-          <Champ libelle="Cuisses" valeur={cuisses} onChange={setCuisses} style={styles.demi} />
+          {(
+            [
+              ['Bras gauche', brasG, setBrasG],
+              ['Bras droit', brasD, setBrasD],
+              ['Torse', torse, setTorse],
+              ['Ventre', ventre, setVentre],
+              ['Hanches', hanches, setHanches],
+              ['Cuisses', cuisses, setCuisses],
+            ] as const
+          ).map(([libelle, valeur, poser]) => (
+            <Champ
+              key={libelle}
+              libelle={libelle}
+              valeur={valeur}
+              onChange={poser}
+              clavier="numeric"
+              style={styles.demi}
+            />
+          ))}
         </View>
       </Carte>
 
@@ -90,12 +111,11 @@ export default function EcranMesures() {
             .reverse()
             .slice(0, 10)
             .map((m) => (
-              <View key={m.date} style={styles.ligneHistorique}>
-                <Text style={styles.histoDate}>{m.date}</Text>
-                <Text style={styles.histoValeur}>
-                  {m.poidsKg != null ? `${m.poidsKg} kg` : '—'}
-                </Text>
-              </View>
+              <LigneInfo
+                key={m.date}
+                libelle={m.date}
+                valeur={m.poidsKg != null ? `${m.poidsKg} kg` : '—'}
+              />
             ))}
         </Carte>
       ) : null}
@@ -103,57 +123,10 @@ export default function EcranMesures() {
   );
 }
 
-function Champ({
-  libelle,
-  valeur,
-  onChange,
-  style,
-}: {
-  libelle: string;
-  valeur: string;
-  onChange: (v: string) => void;
-  style?: object;
-}) {
-  return (
-    <View style={[styles.champ, style]}>
-      <Text style={styles.champLibelle}>{libelle}</Text>
-      <TextInput
-        value={valeur}
-        onChangeText={onChange}
-        keyboardType="numeric"
-        placeholder="—"
-        placeholderTextColor={couleurs.texteAttenue}
-        style={styles.input}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  champ: { gap: espace.xs },
-  champLibelle: { fontFamily: typo.corps, fontSize: 13, color: couleurs.texteAttenue },
-  input: {
-    fontFamily: typo.donnees,
-    fontSize: 16,
-    color: couleurs.texte,
-    borderWidth: 1,
-    borderColor: couleurs.trait,
-    borderRadius: rayon.sm,
-    paddingHorizontal: espace.md,
-    paddingVertical: espace.sm,
-  },
   grille: { flexDirection: 'row', flexWrap: 'wrap', gap: espace.md },
   demi: { flexBasis: '45%', flexGrow: 1 },
   courbeBloc: { marginTop: espace.sm, gap: espace.xs },
   variation: { fontFamily: typo.donnees, fontSize: 13, color: couleurs.texteAttenue },
   indice: { marginTop: espace.xs },
-  ligneHistorique: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: espace.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: couleurs.trait,
-  },
-  histoDate: { fontFamily: typo.donnees, fontSize: 13, color: couleurs.texteAttenue },
-  histoValeur: { fontFamily: typo.donnees, fontSize: 13, color: couleurs.texte },
 });

@@ -1,9 +1,18 @@
-import { Bouton, Carte, Corps, Ecran, SousTitre, Titre } from '@/design/composants';
-import { couleurs, espace, rayon, typo } from '@/design/theme';
+import {
+  Bouton,
+  Carte,
+  Champ,
+  Corps,
+  Ecran,
+  LigneNavigation,
+  SousTitre,
+} from '@/design/composants';
+import { couleurs } from '@/design/theme';
 import { useMagasin } from '@/etat/magasin';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 /** Extrait un message d'erreur affichable (ErreurSauvegarde porte déjà un message rédigé). */
 function messageErreur(e: unknown): string {
@@ -11,6 +20,7 @@ function messageErreur(e: unknown): string {
 }
 
 export default function EcranReglages() {
+  const router = useRouter();
   const { exporterSauvegarde, importerSauvegarde, genererRapport } = useMagasin();
 
   const [passExport, setPassExport] = useState('');
@@ -70,7 +80,29 @@ export default function EcranReglages() {
 
   return (
     <Ecran>
-      <Titre>Réglages & données</Titre>
+      {/* Comprendre l'app : seuils personnels et règles du moteur. */}
+      <LigneNavigation
+        titre="Mes seuils"
+        detail="Ta normale personnelle et les garde-fous absolus"
+        icone="sliders"
+        couleur={couleurs.sante}
+        onPress={() => router.push('/seuils')}
+      />
+      <LigneNavigation
+        titre="Comment ça marche"
+        detail="Les règles du moteur, lisibles et vérifiables"
+        icone="help-circle"
+        couleur={couleurs.freeletics}
+        onPress={() => router.push('/apropos')}
+      />
+      <LigneNavigation
+        titre="Importer des séances"
+        detail="Strava, Freeletics… via Santé Connect, en local"
+        icone="activity"
+        couleur={couleurs.course}
+        onPress={() => router.push('/sante-connect')}
+      />
+
       <Corps>
         Toutes ces actions restent locales : rien ne transite par un serveur. Le partage utilise la
         feuille système de ton téléphone.
@@ -142,20 +174,13 @@ export default function EcranReglages() {
           onChange={setPassImport}
           secret
         />
-        <View style={styles.champ}>
-          <Text style={styles.champLibelle}>Contenu chiffré (.rfb)</Text>
-          <TextInput
-            value={contenuImport}
-            onChangeText={setContenuImport}
-            multiline
-            numberOfLines={4}
-            placeholder="Colle ici le contenu du fichier de sauvegarde"
-            placeholderTextColor={couleurs.texteAttenue}
-            style={[styles.input, styles.inputMultiligne]}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </View>
+        <Champ
+          libelle="Contenu chiffré (.rfb)"
+          valeur={contenuImport}
+          onChange={setContenuImport}
+          multiligne
+          placeholder="Colle ici le contenu du fichier de sauvegarde"
+        />
         <Bouton
           titre={enCours === 'import' ? 'Restauration…' : 'Restaurer (remplace tout)'}
           variante="secondaire"
@@ -167,50 +192,7 @@ export default function EcranReglages() {
   );
 }
 
-function Champ({
-  libelle,
-  valeur,
-  onChange,
-  secret,
-  placeholder,
-}: {
-  libelle: string;
-  valeur: string;
-  onChange: (v: string) => void;
-  secret?: boolean;
-  placeholder?: string;
-}) {
-  return (
-    <View style={styles.champ}>
-      <Text style={styles.champLibelle}>{libelle}</Text>
-      <TextInput
-        value={valeur}
-        onChangeText={onChange}
-        secureTextEntry={secret}
-        placeholder={placeholder}
-        placeholderTextColor={couleurs.texteAttenue}
-        autoCapitalize="none"
-        autoCorrect={false}
-        style={styles.input}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   carteSucces: { borderColor: couleurs.course },
   carteErreur: { borderColor: couleurs.sante },
-  champ: { gap: espace.xs },
-  champLibelle: { fontFamily: typo.corps, fontSize: 13, color: couleurs.texteAttenue },
-  input: {
-    fontFamily: typo.donnees,
-    fontSize: 15,
-    color: couleurs.texte,
-    borderWidth: 1,
-    borderColor: couleurs.trait,
-    borderRadius: rayon.sm,
-    paddingHorizontal: espace.md,
-    paddingVertical: espace.sm,
-  },
-  inputMultiligne: { minHeight: 90, textAlignVertical: 'top' },
 });

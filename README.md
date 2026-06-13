@@ -14,7 +14,8 @@ digestion) **adaptent automatiquement** le plan d'entraînement, jamais l'invers
 
 - **Local-first / privacy-first** : aucune donnée ne quitte le téléphone par défaut. Pas de compte,
   pas d'analytics, pas de SDK tiers traceur. **Aucune requête réseau au runtime** hors intégration
-  santé opt-in.
+  santé opt-in. *(Un portage web + une synchronisation cloud **opt-in** sont planifiés sans remettre
+  en cause ce défaut — voir [`docs/07`](docs/07-portage-web-supabase.md).)*
 - **Stockage SQLite** (`expo-sqlite`) avec migrations versionnées (`PRAGMA user_version`).
 - **Export/import chiffré AES-256** (passphrase utilisateur) pour sauvegarde et changement d'appareil.
 - **KISS** : Zustand pour l'état, Expo Router pour la navigation. Pas de Redux, pas de sur-architecture.
@@ -192,6 +193,11 @@ Règles **déterministes** ; une seule adaptation est appliquée par jour selon 
       transparence des règles + cadre médical). _Hors environnement de dev (à valider sur device) :
       widget Android (build EAS), audit accessibilité AA et rendu AMOLED, validation visuelle des
       nouveaux écrans et des notifications._
+- [ ] **Incrément 13 — Portage web + sync Supabase** _(planifié, cf.
+      [`docs/07`](docs/07-portage-web-supabase.md))_ : app web sur GitHub Pages, backend Supabase
+      sécurisé (Auth compte unique + RLS), synchronisation bidirectionnelle web ⇄ mobile,
+      chiffrement de bout en bout. Le moteur reste 100 % côté client. **Phase 0 bloquante** :
+      abstraction `Depot` découplant le store de `expo-sqlite`.
 
 > Couches métier et données vérifiables immédiatement via `npm test` (**181 tests**),
 > `npm run typecheck` et `npm run lint` (0 erreur). Les écrans se valident sur device :

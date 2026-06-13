@@ -62,6 +62,11 @@ Migrations versionnées dans `src/donnees/schema.ts` via `PRAGMA user_version`.
 1. **Local-first** : aucune requête réseau au runtime, pas d'analytics, pas de compte.
    L'import de séances externes (Strava, Freeletics…) passe par Health Connect, la base
    santé locale d'Android (`src/donnees/santeConnect.ts`) — lecture opt-in, sur l'appareil.
+   > ⚠️ **Évolution planifiée (non encore implémentée, cf. `docs/07`)** : un portage web + une
+   > synchronisation Supabase **opt-in** assoupliront cet invariant en « local-first **par défaut** ;
+   > sync cloud chiffrée opt-in ». Le moteur (`src/domaine/`) restera 100 % côté client (aucune
+   > logique métier serveur). Tant que `docs/07` n'est pas livré, l'invariant ci-dessus reste vrai
+   > tel quel.
 2. **Déterministe et explicable** : chaque décision du moteur est une règle lisible, affichée
    telle quelle à l'utilisateur (`raison`), et annulable d'un tap. Pas de ML opaque.
 3. **Sécurité MICI d'abord** : les garde-fous absolus (douleur ≥ 7, pas d'apnée sous charge…)
@@ -81,4 +86,8 @@ Migrations versionnées dans `src/donnees/schema.ts` via `PRAGMA user_version`.
   souvent plus rapide à lire que le module lui-même.
 - `docs/01-06` = spécifications produit : à consulter uniquement pour le contexte d'une nouvelle
   fonctionnalité (la feuille de route est dans `05`, les specs du moteur v2 dans `02`).
+- `docs/07` = plan d'architecture du **portage web (GitHub Pages) + sync Supabase** (auth compte
+  unique, RLS, chiffrement E2EE, plan en 5 phases). Lire avant toute tâche liée au web ou au cloud.
+  Prérequis bloquant = Phase 0 : extraire une interface `Depot` pour découpler `magasin.ts` de
+  `expo-sqlite` (aujourd'hui le store passe `db` à chaque dépôt).
 - Ne jamais explorer `node_modules/` ; `grep` ciblé plutôt que lecture de répertoires entiers.

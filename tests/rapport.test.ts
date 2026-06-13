@@ -26,6 +26,8 @@ const baseVide: DonneesRapport = {
   seances: [],
   mesures: [],
   adaptations: [],
+  consommations: [],
+  statutsAliments: [],
 };
 
 describe('construireRapportHtml', () => {
@@ -87,5 +89,18 @@ describe('construireRapportHtml', () => {
   it('reste lisible sans aucune donnée', () => {
     const html = construireRapportHtml(baseVide);
     expect(html).toContain('Aucune adaptation appliquée');
+    expect(html).toContain('Aucune consommation enregistrée');
+  });
+
+  it('liste les aliments avec statut manuel daté « (patient) », nom échappé', () => {
+    const html = construireRapportHtml({
+      ...baseVide,
+      consommations: [{ date: '2026-06-01', aliments: ['<b>pizza</b>'] }],
+      statutsAliments: [{ aliment: '<b>pizza</b>', statut: 'a-eviter', dateMaj: '2026-06-02' }],
+    });
+    expect(html).toContain('Alimentation');
+    expect(html).toContain('à éviter (patient)');
+    expect(html).not.toContain('<b>pizza</b>');
+    expect(html).toContain('&lt;b&gt;pizza&lt;/b&gt;');
   });
 });

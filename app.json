@@ -2,12 +2,15 @@
   "expo": {
     "name": "REGISTRE.FORME",
     "slug": "registre-forme",
+    "owner": "ybdnx",
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "registreforme",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/splash-icon.png",
       "backgroundColor": "#0F141B",
       "resizeMode": "contain"
     },
@@ -15,9 +18,14 @@
     "android": {
       "package": "com.registreforme.app",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F141B"
       },
-      "permissions": []
+      "permissions": [
+        "android.permission.health.READ_EXERCISE",
+        "android.permission.health.READ_DISTANCE",
+        "android.permission.health.READ_HEART_RATE"
+      ]
     },
     "ios": {
       "bundleIdentifier": "com.registreforme.app",
@@ -31,14 +39,22 @@
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": false
+            "usesCleartextTraffic": false,
+            "minSdkVersion": 26
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      "react-native-health-connect"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "43c82adc-1e61-4a11-a97b-1ae32d4d63a9"
+      }
     }
   }
 }

@@ -10,6 +10,10 @@ export interface Profil {
   disclaimerAccepte: boolean;
   dateAcceptationDisclaimer?: DateISO;
   santeOptin: boolean;
+  /** Mode poussée actif : le plan est en pause (cf. doc 02 §2.6). */
+  modePousse: boolean;
+  /** Date de déclaration de la poussée en cours (AAAA-MM-JJ), si active. */
+  dateDebutPousse?: DateISO;
 }
 
 interface ProfilRow {
@@ -19,6 +23,8 @@ interface ProfilRow {
   disclaimer_accepte: number;
   date_acceptation_disclaimer: string | null;
   sante_optin: number;
+  mode_pousse: number;
+  date_debut_pousse: string | null;
 }
 
 export async function lireProfil(db: SQLite.SQLiteDatabase): Promise<Profil | null> {
@@ -31,14 +37,16 @@ export async function lireProfil(db: SQLite.SQLiteDatabase): Promise<Profil | nu
     disclaimerAccepte: r.disclaimer_accepte === 1,
     dateAcceptationDisclaimer: r.date_acceptation_disclaimer ?? undefined,
     santeOptin: r.sante_optin === 1,
+    modePousse: r.mode_pousse === 1,
+    dateDebutPousse: r.date_debut_pousse ?? undefined,
   };
 }
 
 export async function enregistrerProfil(db: SQLite.SQLiteDatabase, p: Profil): Promise<void> {
   await db.runAsync(
     `INSERT OR REPLACE INTO profil
-       (id, taille_cm, age, date_debut_programme, disclaimer_accepte, date_acceptation_disclaimer, sante_optin)
-     VALUES (1, ?, ?, ?, ?, ?, ?)`,
+       (id, taille_cm, age, date_debut_programme, disclaimer_accepte, date_acceptation_disclaimer, sante_optin, mode_pousse, date_debut_pousse)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       p.tailleCm,
       p.age,
@@ -46,6 +54,8 @@ export async function enregistrerProfil(db: SQLite.SQLiteDatabase, p: Profil): P
       p.disclaimerAccepte ? 1 : 0,
       p.dateAcceptationDisclaimer ?? null,
       p.santeOptin ? 1 : 0,
+      p.modePousse ? 1 : 0,
+      p.dateDebutPousse ?? null,
     ],
   );
 }

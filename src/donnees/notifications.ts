@@ -9,9 +9,11 @@ import * as Notifications from 'expo-notifications';
 
 const ID_RAPPEL_JOURNAL = 'rappel-journal';
 const ID_RAPPEL_PESEE = 'rappel-pesee';
+const ID_RAPPEL_BILAN = 'rappel-bilan';
 
 const HEURE_RAPPEL_JOURNAL = { heure: 20, minute: 0 };
 const HEURE_RAPPEL_PESEE = { heure: 8, minute: 0 };
+const HEURE_RAPPEL_BILAN = { heure: 18, minute: 0 };
 
 let canalAndroidPret = false;
 
@@ -96,6 +98,25 @@ export async function synchroniserNotifications(
         body: 'Un petit moment pour ta pesée et tes mensurations de la semaine.',
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: ciblePesee },
+    });
+
+    // Bilan hebdo : le rendez-vous du dimanche soir (18 h). Dimanche passé → suivant.
+    let cibleBilan = construireDate(dimanche, HEURE_RAPPEL_BILAN.heure, HEURE_RAPPEL_BILAN.minute);
+    if (cibleBilan <= maintenant) {
+      cibleBilan = construireDate(
+        ajouterJours(dimanche, 7),
+        HEURE_RAPPEL_BILAN.heure,
+        HEURE_RAPPEL_BILAN.minute,
+      );
+    }
+    await Notifications.cancelScheduledNotificationAsync(ID_RAPPEL_BILAN);
+    await Notifications.scheduleNotificationAsync({
+      identifier: ID_RAPPEL_BILAN,
+      content: {
+        title: 'Bilan de la semaine',
+        body: 'Charge, santé, progression : ton récap est prêt. La semaine prochaine en un coup d’œil.',
+      },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: cibleBilan },
     });
   } catch {
     // Notifications optionnelles : on n'interrompt jamais le flux applicatif.

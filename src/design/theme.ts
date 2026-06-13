@@ -7,12 +7,16 @@ export const couleurs = {
   trait: '#2A3442',
   texte: '#E6ECF2',
   texteAttenue: '#8C99A8',
+  /** Texte posé SUR un fond accentué (boutons pleins, cases actives). */
+  encre: '#0F141B',
   // Accents par domaine (= pastilles du semainier).
   course: '#FF8A3D',
   salle: '#5B8DEF',
   freeletics: '#3FD0A4',
   sante: '#E66B8A',
   alerte: '#E66B8A',
+  /** Signal observé (heatmap, verdict « suspect ») — distinct du rouge décidé. */
+  ambre: '#C98A2E',
 } as const;
 
 /** Couleur d'accent associée à un type de séance. */

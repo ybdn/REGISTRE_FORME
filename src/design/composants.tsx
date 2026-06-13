@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import {
   Pressable,
@@ -5,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   type TextProps,
   View,
   type ViewProps,
@@ -83,6 +85,7 @@ export function Bouton({
   titre,
   variante = 'principal',
   couleur = couleurs.salle,
+  disabled,
   style,
   ...rest
 }: PressableProps & {
@@ -94,16 +97,166 @@ export function Bouton({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled }}
+      disabled={disabled}
       style={({ pressed }) => [
         styles.bouton,
         principal ? { backgroundColor: couleur } : { borderWidth: 1, borderColor: couleurs.trait },
         pressed && styles.boutonPresse,
+        disabled && styles.boutonInactif,
         style as object,
       ]}
       {...rest}
     >
       <Text style={[styles.boutonTexte, !principal && { color: couleurs.texte }]}>{titre}</Text>
     </Pressable>
+  );
+}
+
+/** Sélecteur segmenté à deux ou trois options (ex. Aujourd'hui / Hier). */
+export function Segments<T extends string>({
+  options,
+  valeur,
+  onChange,
+  couleur = couleurs.sante,
+}: {
+  options: { valeur: T; libelle: string }[];
+  valeur: T;
+  onChange: (v: T) => void;
+  couleur?: string;
+}) {
+  return (
+    <View style={styles.segments}>
+      {options.map((o) => {
+        const actif = o.valeur === valeur;
+        return (
+          <Pressable
+            key={o.valeur}
+            accessibilityRole="button"
+            accessibilityState={{ selected: actif }}
+            onPress={() => onChange(o.valeur)}
+            style={[styles.segment, actif && { backgroundColor: couleur, borderColor: couleur }]}
+          >
+            <Text style={[styles.segmentTexte, actif && styles.segmentTexteActif]}>
+              {o.libelle}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Chip activable (tags du journal, aliments). */
+export function Chip({
+  libelle,
+  actif,
+  onPress,
+  couleur = couleurs.salle,
+}: {
+  libelle: string;
+  actif: boolean;
+  onPress: () => void;
+  couleur?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: actif }}
+      onPress={onPress}
+      style={[styles.chip, actif && { backgroundColor: couleur, borderColor: couleur }]}
+    >
+      <Text style={[styles.chipTexte, actif && styles.chipTexteActif]}>{libelle}</Text>
+    </Pressable>
+  );
+}
+
+/** Champ de saisie avec libellé (texte ou numérique). */
+export function Champ({
+  libelle,
+  valeur,
+  onChange,
+  clavier = 'default',
+  secret,
+  placeholder,
+  multiligne,
+  style,
+}: {
+  libelle: string;
+  valeur: string;
+  onChange: (v: string) => void;
+  clavier?: 'default' | 'numeric';
+  secret?: boolean;
+  placeholder?: string;
+  multiligne?: boolean;
+  style?: object;
+}) {
+  return (
+    <View style={[styles.champ, style]}>
+      <Text style={styles.champLibelle}>{libelle}</Text>
+      <TextInput
+        value={valeur}
+        onChangeText={onChange}
+        keyboardType={clavier}
+        secureTextEntry={secret}
+        multiline={multiligne}
+        placeholder={placeholder}
+        placeholderTextColor={couleurs.texteAttenue}
+        autoCapitalize={clavier === 'default' && !secret ? 'sentences' : 'none'}
+        autoCorrect={false}
+        style={[styles.champInput, multiligne && styles.champInputMultiligne]}
+      />
+    </View>
+  );
+}
+
+/** Ligne « libellé : valeur » avec filet — listes de stats (bilan, records, historique). */
+export function LigneInfo({ libelle, valeur }: { libelle: string; valeur: string }) {
+  return (
+    <View style={styles.ligneInfo}>
+      <Text style={styles.ligneInfoLibelle}>{libelle}</Text>
+      <Text style={styles.ligneInfoValeur}>{valeur}</Text>
+    </View>
+  );
+}
+
+/** Ligne de navigation avec icône et chevron (hubs : réglages, accès rapides). */
+export function LigneNavigation({
+  titre,
+  detail,
+  icone,
+  couleur = couleurs.texteAttenue,
+  onPress,
+}: {
+  titre: string;
+  detail?: string;
+  icone: keyof typeof Feather.glyphMap;
+  couleur?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.ligneNav, pressed && styles.boutonPresse]}
+    >
+      <Feather name={icone} size={18} color={couleur} />
+      <View style={styles.ligneNavTextes}>
+        <Text style={styles.ligneNavTitre}>{titre}</Text>
+        {detail ? <Text style={styles.ligneNavDetail}>{detail}</Text> : null}
+      </View>
+      <Feather name="chevron-right" size={18} color={couleurs.texteAttenue} />
+    </Pressable>
+  );
+}
+
+/** Barre de progression horizontale (0-100). */
+export function Jauge({ valeur, couleur = couleurs.salle }: { valeur: number; couleur?: string }) {
+  const pct = Math.max(0, Math.min(100, valeur));
+  return (
+    <View style={styles.jauge}>
+      <View style={[styles.jaugeRemplie, { width: `${pct}%`, backgroundColor: couleur }]} />
+    </View>
   );
 }
 
@@ -213,7 +366,73 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   boutonPresse: { opacity: 0.7 },
-  boutonTexte: { fontFamily: typo.titre, fontSize: 15, color: '#0F141B' },
+  boutonInactif: { opacity: 0.5 },
+  boutonTexte: { fontFamily: typo.titre, fontSize: 15, color: couleurs.encre },
+  segments: { flexDirection: 'row', gap: espace.sm },
+  segment: {
+    flex: 1,
+    paddingVertical: espace.sm,
+    borderRadius: rayon.md,
+    borderWidth: 1,
+    borderColor: couleurs.trait,
+    alignItems: 'center',
+  },
+  segmentTexte: { fontFamily: typo.corps, fontSize: 13, color: couleurs.texteAttenue },
+  segmentTexteActif: { color: couleurs.encre, fontFamily: typo.titre },
+  chip: {
+    paddingHorizontal: espace.md,
+    paddingVertical: espace.xs + 2,
+    borderRadius: rayon.lg,
+    borderWidth: 1,
+    borderColor: couleurs.trait,
+  },
+  chipTexte: { fontFamily: typo.corps, fontSize: 12, color: couleurs.texteAttenue },
+  chipTexteActif: { color: couleurs.encre },
+  champ: { gap: espace.xs },
+  champLibelle: { fontFamily: typo.corps, fontSize: 13, color: couleurs.texteAttenue },
+  champInput: {
+    fontFamily: typo.donnees,
+    fontSize: 15,
+    color: couleurs.texte,
+    borderWidth: 1,
+    borderColor: couleurs.trait,
+    borderRadius: rayon.sm,
+    paddingHorizontal: espace.md,
+    paddingVertical: espace.sm,
+  },
+  champInputMultiligne: { minHeight: 90, textAlignVertical: 'top' },
+  ligneInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: espace.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: couleurs.trait,
+  },
+  ligneInfoLibelle: { fontFamily: typo.corps, fontSize: 14, color: couleurs.texte },
+  ligneInfoValeur: { fontFamily: typo.donnees, fontSize: 14, color: couleurs.texteAttenue },
+  ligneNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: espace.md,
+    backgroundColor: couleurs.surface,
+    borderRadius: rayon.lg,
+    borderWidth: 1,
+    borderColor: couleurs.trait,
+    paddingVertical: espace.md,
+    paddingHorizontal: espace.lg,
+  },
+  ligneNavTextes: { flex: 1, gap: 2 },
+  ligneNavTitre: { fontFamily: typo.titre, fontSize: 14, color: couleurs.texte },
+  ligneNavDetail: { fontFamily: typo.corps, fontSize: 12, color: couleurs.texteAttenue },
+  jauge: {
+    height: 6,
+    backgroundColor: couleurs.fond,
+    borderRadius: 3,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: couleurs.trait,
+  },
+  jaugeRemplie: { height: '100%' },
   echelle: { flexDirection: 'row', flexWrap: 'wrap', gap: espace.xs },
   echelleItem: {
     minWidth: 38,
@@ -225,6 +444,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   echelleTexte: { fontFamily: typo.donnees, fontSize: 14, color: couleurs.texteAttenue },
-  echelleTexteActif: { color: '#0F141B' },
+  echelleTexteActif: { color: couleurs.encre },
   pastille: { width: 14, height: 14, borderRadius: 7 },
 });

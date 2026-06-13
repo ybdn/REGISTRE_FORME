@@ -1,0 +1,47 @@
+name: 🐞 Bug
+description: Signaler un comportement incorrect
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Ce qui ne va pas, en une ou deux phrases.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Étapes pour reproduire
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: attendu
+    attributes:
+      label: Comportement attendu
+    validations:
+      required: true
+  - type: dropdown
+    id: couche
+    attributes:
+      label: Couche suspectée
+      options:
+        - Inconnue
+        - src/domaine (logique métier)
+        - src/etat (store)
+        - src/donnees (SQLite / Expo)
+        - src/design
+        - app (écrans)
+    validations:
+      required: false
+  - type: input
+    id: environnement
+    attributes:
+      label: Environnement
+      placeholder: Android 14, Expo Go / build EAS, version de l'app…
+    validations:
+      required: false

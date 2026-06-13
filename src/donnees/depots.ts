@@ -1,4 +1,13 @@
-import type { Adaptation, EntreeJournal, Phase, SeanceRealisee, TypeSeance } from '@/domaine/types';
+import type {
+  Adaptation,
+  ConsommationJour,
+  EntreeJournal,
+  Phase,
+  SeanceRealisee,
+  SourceSeance,
+  StatutAlimentManuel,
+  TypeSeance,
+} from '@/domaine/types';
 import type * as SQLite from 'expo-sqlite';
 
 // Dépôts (repositories) : seul point d'accès aux tables. Conversion ligne SQL ↔ modèle domaine.
@@ -129,6 +138,72 @@ function versEntreeJournal(r: JournalRow): EntreeJournal {
   };
 }
 
+// ── Suivi alimentaire ───────────────────────────────────────────────────────
+
+export async function enregistrerConsommation(
+  db: SQLite.SQLiteDatabase,
+  c: ConsommationJour,
+): Promise<void> {
+  await db.runAsync(
+    `INSERT INTO consommation_jour (date, aliments)
+     VALUES (?, ?)
+     ON CONFLICT(date) DO UPDATE SET aliments=excluded.aliments`,
+    [c.date, JSON.stringify(c.aliments)],
+  );
+}
+
+export async function lireConsommations(
+  db: SQLite.SQLiteDatabase,
+  depuis?: string,
+): Promise<ConsommationJour[]> {
+  const lignes = depuis
+    ? await db.getAllAsync<ConsommationRow>(
+        'SELECT * FROM consommation_jour WHERE date >= ? ORDER BY date',
+        [depuis],
+      )
+    : await db.getAllAsync<ConsommationRow>('SELECT * FROM consommation_jour ORDER BY date');
+  return lignes.map(versConsommation);
+}
+
+interface ConsommationRow {
+  date: string;
+  aliments: string;
+}
+
+function versConsommation(r: ConsommationRow): ConsommationJour {
+  return { date: r.date, aliments: JSON.parse(r.aliments) as string[] };
+}
+
+export async function definirStatutAliment(
+  db: SQLite.SQLiteDatabase,
+  s: StatutAlimentManuel,
+): Promise<void> {
+  await db.runAsync(
+    'INSERT OR REPLACE INTO aliment_statut (aliment, statut, date_maj) VALUES (?, ?, ?)',
+    [s.aliment, s.statut, s.dateMaj],
+  );
+}
+
+export async function supprimerStatutAliment(
+  db: SQLite.SQLiteDatabase,
+  aliment: string,
+): Promise<void> {
+  await db.runAsync('DELETE FROM aliment_statut WHERE aliment = ?', [aliment]);
+}
+
+export async function lireStatutsAliments(
+  db: SQLite.SQLiteDatabase,
+): Promise<StatutAlimentManuel[]> {
+  const lignes = await db.getAllAsync<{ aliment: string; statut: string; date_maj: string }>(
+    'SELECT * FROM aliment_statut ORDER BY aliment',
+  );
+  return lignes.map((r) => ({
+    aliment: r.aliment,
+    statut: r.statut as StatutAlimentManuel['statut'],
+    dateMaj: r.date_maj,
+  }));
+}
+
 // ── Séances réalisées ───────────────────────────────────────────────────────
 
 export async function enregistrerSeance(
@@ -137,8 +212,8 @@ export async function enregistrerSeance(
 ): Promise<void> {
   await db.runAsync(
     `INSERT OR REPLACE INTO seance_realisee
-       (id, date, type, variante, rpe, duree_min, distance_km, temps_sec, charges, ressenti_digestif, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, date, type, variante, rpe, duree_min, distance_km, temps_sec, charges, ressenti_digestif, note, source, id_externe)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       s.id,
       s.date,
@@ -151,8 +226,22 @@ export async function enregistrerSeance(
       s.charges ? JSON.stringify(s.charges) : null,
       s.ressentiDigestif ?? null,
       s.note ?? null,
+      s.source ?? 'app',
+      s.idExterne ?? null,
     ],
   );
+}
+
+/** Ids externes des séances déjà importées d'une source (dédoublonnage à l'import). */
+export async function lireIdsExternes(
+  db: SQLite.SQLiteDatabase,
+  source: SourceSeance,
+): Promise<string[]> {
+  const lignes = await db.getAllAsync<{ id_externe: string }>(
+    'SELECT id_externe FROM seance_realisee WHERE source = ? AND id_externe IS NOT NULL',
+    [source],
+  );
+  return lignes.map((l) => l.id_externe);
 }
 
 export async function lireSeances(
@@ -180,6 +269,8 @@ interface SeanceRow {
   charges: string | null;
   ressenti_digestif: number | null;
   note: string | null;
+  source: SourceSeance;
+  id_externe: string | null;
 }
 
 function versSeanceRealisee(r: SeanceRow): SeanceRealisee {
@@ -195,6 +286,8 @@ function versSeanceRealisee(r: SeanceRow): SeanceRealisee {
     charges: r.charges ? JSON.parse(r.charges) : undefined,
     ressentiDigestif: r.ressenti_digestif ?? undefined,
     note: r.note ?? undefined,
+    source: r.source,
+    idExterne: r.id_externe ?? undefined,
   };
 }
 

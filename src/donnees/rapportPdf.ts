@@ -2,7 +2,14 @@ import { type DonneesRapport, construireRapportHtml } from '@/domaine/rapport';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import type * as SQLite from 'expo-sqlite';
-import { lireAdaptationsAppliquees, lireJournal, lireMesures, lireSeances } from './depots';
+import {
+  lireAdaptationsAppliquees,
+  lireConsommations,
+  lireJournal,
+  lireMesures,
+  lireSeances,
+  lireStatutsAliments,
+} from './depots';
 import type { Profil } from './profil';
 
 // Rapport gastro en PDF (Incrément 6) : lit la base sur la période, construit le HTML pur
@@ -15,12 +22,15 @@ async function rassemblerDonnees(
   depuis: string,
   fin: string,
 ): Promise<DonneesRapport> {
-  const [journal, seances, mesures, adaptations] = await Promise.all([
-    lireJournal(db, depuis),
-    lireSeances(db, depuis),
-    lireMesures(db, depuis),
-    lireAdaptationsAppliquees(db, depuis),
-  ]);
+  const [journal, seances, mesures, adaptations, consommations, statutsAliments] =
+    await Promise.all([
+      lireJournal(db, depuis),
+      lireSeances(db, depuis),
+      lireMesures(db, depuis),
+      lireAdaptationsAppliquees(db, depuis),
+      lireConsommations(db, depuis),
+      lireStatutsAliments(db),
+    ]);
   return {
     genereLe: fin,
     periode: { debut: depuis, fin },
@@ -29,6 +39,8 @@ async function rassemblerDonnees(
     seances: seances.filter((s) => s.date <= fin),
     mesures: mesures.map((m) => ({ date: m.date, poidsKg: m.poidsKg })),
     adaptations,
+    consommations,
+    statutsAliments,
   };
 }
 

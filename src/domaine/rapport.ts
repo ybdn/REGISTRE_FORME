@@ -3,8 +3,18 @@
 // Objectif : donner au médecin une vue factuelle et datée des signaux Crohn et de l'activité,
 // sans jamais se substituer à son jugement (disclaimer en pied de page).
 
+import { LIBELLES_STATUT, classerAliments } from './alimentation';
+import { calculerBaseline } from './baseline';
 import { SEUIL_DOULEUR, SEUIL_ENERGIE } from './constantes';
-import type { DateISO, EntreeJournal, SeanceRealisee, TypeSeance } from './types';
+import { analyserTags } from './correlations';
+import type {
+  ConsommationJour,
+  DateISO,
+  EntreeJournal,
+  SeanceRealisee,
+  StatutAlimentManuel,
+  TypeSeance,
+} from './types';
 
 /** Mesure réduite au strict nécessaire au rapport (évite de coupler le domaine à la couche données). */
 export interface MesureRapport {
@@ -26,6 +36,8 @@ export interface DonneesRapport {
   seances: SeanceRealisee[];
   mesures: MesureRapport[];
   adaptations: AdaptationRapport[];
+  consommations: ConsommationJour[];
+  statutsAliments: StatutAlimentManuel[];
 }
 
 const LIBELLE_TYPE: Record<TypeSeance, string> = {
@@ -84,10 +96,43 @@ function syntheseSeances(seances: SeanceRealisee[]) {
   };
 }
 
+/** Tendance de la douleur sur la période (première moitié vs seconde). */
+function tendanceDouleurPeriode(journal: EntreeJournal[]): string {
+  if (journal.length < 4) return '—';
+  const tries = [...journal].sort((a, b) => a.date.localeCompare(b.date));
+  const milieu = Math.floor(tries.length / 2);
+  const m1 = moyenne(tries.slice(0, milieu).map((e) => e.douleur));
+  const m2 = moyenne(tries.slice(milieu).map((e) => e.douleur));
+  if (m1 === null || m2 === null) return '—';
+  const diff = m2 - m1;
+  if (diff > 0.5) return `en hausse (${fmt(m1)} → ${fmt(m2)})`;
+  if (diff < -0.5) return `en baisse (${fmt(m1)} → ${fmt(m2)})`;
+  return `stable (~${fmt(m2)})`;
+}
+
 /** Construit le HTML imprimable du rapport gastro. Déterministe et testable. */
 export function construireRapportHtml(d: DonneesRapport): string {
   const j = syntheseJournal(d.journal);
   const s = syntheseSeances(d.seances);
+
+  // Baseline personnelle + tendance (§3.6) : « ta normale » et son évolution.
+  const baseline = calculerBaseline(d.journal, d.periode.fin);
+  const tendance = tendanceDouleurPeriode(d.journal);
+
+  // Déclencheurs possibles (§3.6) : corrélations tag ↔ poussée, AVEC effectifs —
+  // jamais de causalité affirmée, c'est le gastro qui juge.
+  const correlations = analyserTags(d.journal, d.periode.fin);
+  const lignesDeclencheurs =
+    correlations.length > 0
+      ? correlations
+          .map(
+            (c) =>
+              `<tr><td>${echapper(c.tag)}</td><td>${c.nbAvecPoussee}/${c.occurrences}</td><td>${Math.round(
+                c.pAvec * 100,
+              )} %</td><td>${Math.round(c.pSans * 100)} %</td></tr>`,
+          )
+          .join('')
+      : '<tr><td colspan="4" class="vide">Aucune corrélation significative (≥ 5 occurrences, ≥ 30 jours de journal).</td></tr>';
 
   const poids = d.mesures.filter((m) => m.poidsKg != null) as Required<MesureRapport>[];
   const poidsDebut = poids[0]?.poidsKg ?? null;
@@ -97,6 +142,29 @@ export function construireRapportHtml(d: DonneesRapport): string {
   const lignesType = (Object.keys(s.parType) as TypeSeance[])
     .map((t) => `${LIBELLE_TYPE[t]} : ${s.parType[t]}`)
     .join(' · ');
+
+  // Alimentation : aliments classés (statut manuel posé par le patient, ou corrélation
+  // auto avec effectifs) — même prudence que les déclencheurs, jamais de causalité.
+  const aliments = classerAliments(d.consommations, d.statutsAliments, d.journal, d.periode.fin);
+  const lignesAliments =
+    aliments.length > 0
+      ? aliments
+          .map((a) => {
+            const statut =
+              a.statutManuel !== null
+                ? `${LIBELLES_STATUT[a.statutManuel]} (patient)`
+                : a.verdict === 'suspect'
+                  ? 'suspect (corrélation)'
+                  : 'neutre';
+            const effectifs = a.correlation
+              ? `${a.correlation.nbAvecPoussee}/${a.correlation.occurrences} · ${Math.round(
+                  a.correlation.pAvec * 100,
+                )} % avec · ${Math.round(a.correlation.pSans * 100)} % sans`
+              : `${a.nbJoursConsomme} jour${a.nbJoursConsomme > 1 ? 's' : ''} de consommation`;
+            return `<tr><td>${echapper(a.aliment)}</td><td>${echapper(statut)}</td><td>${effectifs}</td></tr>`;
+          })
+          .join('')
+      : '<tr><td colspan="3" class="vide">Aucune consommation enregistrée sur la période.</td></tr>';
 
   const lignesAdaptations =
     d.adaptations.length > 0
@@ -146,7 +214,11 @@ export function construireRapportHtml(d: DonneesRapport): string {
     <div class="indic"><div class="v ${j.joursDegrades > 0 ? 'alerte' : ''}">${j.joursDegrades}</div><div class="l">Jours dégradés</div></div>
     <div class="indic"><div class="v">${j.joursAvecBallonnements}</div><div class="l">Jours ballonnés</div></div>
   </div>
-  <p class="meta">Jour dégradé = douleur ≥ ${SEUIL_DOULEUR}/10 ou énergie ≤ ${SEUIL_ENERGIE}/5.</p>
+  <p class="meta">Jour dégradé = douleur ≥ ${SEUIL_DOULEUR}/10 ou énergie ≤ ${SEUIL_ENERGIE}/5.${
+    baseline !== null
+      ? ` Baseline de douleur (médiane 28 j) : ${fmt(baseline.valeur)}/10. Tendance sur la période : ${tendance}.`
+      : ` Tendance de la douleur sur la période : ${tendance}.`
+  }</p>
 
   <h2>Activité physique</h2>
   <div class="grille">
@@ -167,6 +239,23 @@ export function construireRapportHtml(d: DonneesRapport): string {
         : '—'
     }</div><div class="l">Variation</div></div>
   </div>
+
+  <h2>Déclencheurs possibles</h2>
+  <table>
+    <thead><tr><th>Tag</th><th>Poussées suivies</th><th>% avec</th><th>% sans</th></tr></thead>
+    <tbody>${lignesDeclencheurs}</tbody>
+  </table>
+  <p class="meta">Une « poussée » = douleur au-dessus de la baseline dans les 48 h suivant le tag.
+  Association observée, jamais une cause : l'interprétation revient au médecin.</p>
+
+  <h2>Alimentation</h2>
+  <table>
+    <thead><tr><th>Aliment</th><th>Statut</th><th>Effectifs</th></tr></thead>
+    <tbody>${lignesAliments}</tbody>
+  </table>
+  <p class="meta">Statut « (patient) » = posé manuellement. « Suspect » = les journées avec cet
+  aliment sont plus souvent suivies d'une poussée dans les 48 h. Association observée, jamais une
+  cause : l'interprétation revient au médecin.</p>
 
   <h2>Adaptations appliquées</h2>
   <table>

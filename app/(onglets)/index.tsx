@@ -4,14 +4,21 @@ import {
   Corps,
   Donnee,
   Ecran,
+  Jauge,
+  LigneNavigation,
   Pastille,
   SousTitre,
-  Titre,
 } from '@/design/composants';
 import { couleurType, couleurs, espace, rayon, typo } from '@/design/theme';
-import { type TypeSeance, ajouterJours, jourDeLaSemaine } from '@/domaine';
+import {
+  type TypeSeance,
+  ajouterJours,
+  jourDeLaSemaine,
+  peutSortirDePoussee,
+  suggererModePousse,
+} from '@/domaine';
 import { useMagasin } from '@/etat/magasin';
-import { Link, Redirect, useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 const JOURS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -28,17 +35,25 @@ export default function TableauDeBord() {
     aujourdhui,
     semaineCourante,
     planifieesSemaine,
+    journal,
     seances,
     adaptationDuJour,
     annulerAdaptation,
+    definirModePousse,
     seanceDuJour,
+    scoreFormeDuJour,
   } = useMagasin();
 
   if (!profil) return <Redirect href="/onboarding" />;
 
+  const enPoussee = profil.modePousse;
+  const peutSortir = peutSortirDePoussee(journal, aujourdhui);
+  const suggestionPoussee = !enPoussee && suggererModePousse(journal, aujourdhui);
+
   const lundi = ajouterJours(profil.dateDebutProgramme, (semaineCourante - 1) * 7);
   const jourAuj = jourDeLaSemaine(aujourdhui);
   const sdj = seanceDuJour();
+  const journalDuJourSaisi = journal.some((e) => e.date === aujourdhui);
 
   // Dates réalisées (set) pour marquer le semainier.
   const datesFaites = new Set(seances.map((s) => s.date));
@@ -50,6 +65,38 @@ export default function TableauDeBord() {
 
   return (
     <Ecran>
+      {/* Mode poussée : pause du plan + protocole de reprise (jamais imposé). */}
+      {enPoussee ? (
+        <Carte style={styles.adaptation}>
+          <SousTitre>Mode poussée actif</SousTitre>
+          <Corps style={{ color: couleurs.texte }}>
+            Le plan est en pause : maintien minimal seulement (marche, mobilité, respiration).
+            Continue ton journal — c’est maintenant qu’il compte le plus.
+          </Corps>
+          <Bouton
+            titre={
+              peutSortir ? 'Je vais mieux — reprendre' : 'Reprise possible après 3 jours stables'
+            }
+            couleur={couleurs.freeletics}
+            disabled={!peutSortir}
+            onPress={() => peutSortir && definirModePousse(false)}
+          />
+        </Carte>
+      ) : suggestionPoussee ? (
+        <Carte style={styles.adaptation}>
+          <SousTitre>Plusieurs jours difficiles</SousTitre>
+          <Corps style={{ color: couleurs.texte }}>
+            5 jours dégradés d’affilée. Si tu traverses une poussée, tu peux mettre le plan en pause
+            — sans aucune notion d’échec.
+          </Corps>
+          <Bouton
+            titre="Activer le mode poussée"
+            couleur={couleurs.sante}
+            onPress={() => definirModePousse(true)}
+          />
+        </Carte>
+      ) : null}
+
       {/* Bannière d'adaptation — message bienveillant, annulable d'un tap. */}
       {adaptationDuJour && adaptationDuJour.type !== 'aucune' ? (
         <Carte style={styles.adaptation}>
@@ -58,6 +105,54 @@ export default function TableauDeBord() {
           <Pressable onPress={annulerAdaptation} accessibilityRole="button">
             <Text style={styles.annuler}>Annuler cette adaptation</Text>
           </Pressable>
+        </Carte>
+      ) : null}
+
+      {/* Forme du jour — score + décomposition ; sinon, invitation à saisir le journal. */}
+      {scoreFormeDuJour ? (
+        <Pressable onPress={() => router.push('/forme')} accessibilityRole="button">
+          <Carte>
+            <View style={styles.ligneEntete}>
+              <SousTitre>Forme du jour</SousTitre>
+              <Donnee
+                valeur={scoreFormeDuJour.score}
+                unite="/100"
+                couleur={
+                  scoreFormeDuJour.score >= 75
+                    ? couleurs.freeletics
+                    : scoreFormeDuJour.score >= 50
+                      ? couleurs.course
+                      : couleurs.sante
+                }
+              />
+            </View>
+            <View style={styles.barresForme}>
+              {scoreFormeDuJour.composantes.map((c) => (
+                <View key={c.cle} style={styles.barreFormePiste}>
+                  <View
+                    style={[
+                      styles.barreFormeRemplie,
+                      { width: `${Math.round(c.sousScore * 100)}%` },
+                    ]}
+                  />
+                </View>
+              ))}
+            </View>
+            <Text style={styles.lienForme}>Voir la décomposition →</Text>
+          </Carte>
+        </Pressable>
+      ) : !journalDuJourSaisi ? (
+        <Carte>
+          <SousTitre>Journal non saisi</SousTitre>
+          <Corps>
+            Moins de 10 secondes pour saisir tes signaux du jour — ils pilotent l’adaptation de ta
+            séance.
+          </Corps>
+          <Bouton
+            titre="Saisir le journal"
+            couleur={couleurs.sante}
+            onPress={() => router.push('/journal')}
+          />
         </Carte>
       ) : null}
 
@@ -88,7 +183,7 @@ export default function TableauDeBord() {
             );
           })}
         </View>
-        <BarreProgression valeur={progression} />
+        <Jauge valeur={progression} />
       </Carte>
 
       {/* Prochaine séance. */}
@@ -111,6 +206,11 @@ export default function TableauDeBord() {
         ) : (
           <Corps>Repos aujourd’hui. La constance prime sur le volume.</Corps>
         )}
+        <Bouton
+          titre="Séance libre"
+          variante="secondaire"
+          onPress={() => router.push('/seance-libre')}
+        />
       </Carte>
 
       {/* Indicateurs. */}
@@ -125,29 +225,25 @@ export default function TableauDeBord() {
         </Carte>
       </View>
 
-      <Bouton
-        titre="Saisir le journal Crohn"
-        variante="secondaire"
-        onPress={() => router.push('/journal')}
+      {/* Suivis complémentaires — le reste (tendances, bilan, réglages) vit dans les onglets. */}
+      <LigneNavigation
+        titre="Alimentation du jour"
+        detail="Coche ce que tu as mangé et bu"
+        icone="coffee"
+        couleur={couleurs.sante}
+        onPress={() => router.push('/alimentation')}
       />
-
-      <Bouton
+      <LigneNavigation
         titre="Mesures corporelles"
-        variante="secondaire"
+        detail="Poids hebdo, mensurations bi-hebdo"
+        icone="bar-chart-2"
+        couleur={couleurs.salle}
         onPress={() => router.push('/mesures')}
       />
 
-      <Bouton
-        titre="Réglages & données"
-        variante="secondaire"
-        onPress={() => router.push('/reglages')}
-      />
-
-      <Link href="/journal" style={styles.lienDisclaimer}>
-        <Text style={styles.disclaimer}>
-          Rappel : programme à valider avec ton médecin. L’app ne remplace pas un avis gastro.
-        </Text>
-      </Link>
+      <Text style={styles.disclaimer}>
+        Rappel : programme à valider avec ton médecin. L’app ne remplace pas un avis gastro.
+      </Text>
     </Ecran>
   );
 }
@@ -161,18 +257,27 @@ function calculerStreak(
   return planifiees.filter((p) => datesFaites.has(ajouterJours(lundi, p.jour))).length;
 }
 
-function BarreProgression({ valeur }: { valeur: number }) {
-  return (
-    <View style={styles.barre}>
-      <View style={[styles.barreRemplie, { width: `${valeur}%` }]} />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   adaptation: { borderColor: couleurs.sante },
   annuler: { fontFamily: typo.corps, fontSize: 13, color: couleurs.sante, marginTop: espace.xs },
-  ligneEntete: { flexDirection: 'row', justifyContent: 'space-between' },
+  ligneEntete: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  barresForme: { flexDirection: 'row', gap: espace.xs, marginTop: espace.md },
+  barreFormePiste: {
+    flex: 1,
+    height: 6,
+    backgroundColor: couleurs.fond,
+    borderRadius: 3,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: couleurs.trait,
+  },
+  barreFormeRemplie: { height: '100%', backgroundColor: couleurs.freeletics },
+  lienForme: {
+    fontFamily: typo.corps,
+    fontSize: 12,
+    color: couleurs.texteAttenue,
+    marginTop: espace.sm,
+  },
   semainier: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: espace.md },
   cellule: {
     alignItems: 'center',
@@ -186,23 +291,14 @@ const styles = StyleSheet.create({
   jourLettre: { fontFamily: typo.donnees, fontSize: 12, color: couleurs.texteAttenue },
   jourLettreAuj: { color: couleurs.texte },
   pastilleVide: { width: 14, height: 14 },
-  barre: {
-    height: 6,
-    backgroundColor: couleurs.fond,
-    borderRadius: 3,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: couleurs.trait,
-  },
-  barreRemplie: { height: '100%', backgroundColor: couleurs.salle },
   titreSeance: { fontFamily: typo.titre, fontSize: 18 },
   indicateurs: { flexDirection: 'row', gap: espace.lg },
   indicateur: { flex: 1 },
-  lienDisclaimer: { marginTop: espace.sm },
   disclaimer: {
     fontFamily: typo.corps,
     fontSize: 12,
     color: couleurs.texteAttenue,
     textAlign: 'center',
+    marginTop: espace.sm,
   },
 });

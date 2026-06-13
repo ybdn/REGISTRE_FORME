@@ -1,0 +1,27 @@
+name: ✨ Fonctionnalité
+description: Proposer une évolution ou une nouvelle fonctionnalité
+labels: [enhancement]
+body:
+  - type: textarea
+    id: besoin
+    attributes:
+      label: Besoin
+      description: Quel problème utilisateur cela résout-il ? (pas la solution)
+    validations:
+      required: true
+  - type: textarea
+    id: proposition
+    attributes:
+      label: Proposition
+      description: Idée de solution, le cas échéant.
+    validations:
+      required: false
+  - type: checkboxes
+    id: invariants
+    attributes:
+      label: Compatibilité avec les invariants
+      description: cf. CLAUDE.md
+      options:
+        - label: Reste local-first (aucun réseau au runtime)
+        - label: Déterministe et explicable (pas de ML opaque)
+        - label: Ne fragilise pas les garde-fous sécurité MICI

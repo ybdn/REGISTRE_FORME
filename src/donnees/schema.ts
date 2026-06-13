@@ -100,6 +100,93 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_adaptation_date ON adaptation(date);
     `,
   },
+  {
+    version: 2,
+    nom: 'variante_quatre_niveaux',
+    // Élargit le CHECK de seance_realisee.variante aux 4 niveaux gradués du moteur v2
+    // ('normale','moderee','allegee','repos'). SQLite ne sait pas modifier un CHECK en
+    // place : on recrée la table et on recopie les données existantes.
+    sql: `
+      CREATE TABLE seance_realisee_v2 (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('course','salle','freeletics','sante')),
+        variante TEXT NOT NULL CHECK (variante IN ('normale','moderee','allegee','repos')),
+        rpe INTEGER NOT NULL CHECK (rpe BETWEEN 1 AND 10),
+        duree_min INTEGER NOT NULL,
+        distance_km REAL,
+        temps_sec INTEGER,
+        charges TEXT,
+        ressenti_digestif INTEGER CHECK (ressenti_digestif BETWEEN 1 AND 5),
+        note TEXT
+      );
+      INSERT INTO seance_realisee_v2
+        SELECT id, date, type, variante, rpe, duree_min, distance_km, temps_sec, charges, ressenti_digestif, note
+        FROM seance_realisee;
+      DROP TABLE seance_realisee;
+      ALTER TABLE seance_realisee_v2 RENAME TO seance_realisee;
+      CREATE INDEX IF NOT EXISTS idx_seance_realisee_date ON seance_realisee(date);
+    `,
+  },
+  {
+    version: 3,
+    nom: 'plan_vivant_mode_pousse',
+    // Plan vivant (doc 02 §2.6) : mode poussée sur le profil + le programme peut
+    // désormais s'étendre au-delà de 16 semaines-calendrier (glissement) — on lève
+    // le CHECK `semaine BETWEEN 1 AND 16` en recréant seance_planifiee.
+    sql: `
+      ALTER TABLE profil ADD COLUMN mode_pousse INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE profil ADD COLUMN date_debut_pousse TEXT;
+
+      CREATE TABLE seance_planifiee_v3 (
+        id TEXT PRIMARY KEY,
+        semaine INTEGER NOT NULL CHECK (semaine >= 1),
+        phase TEXT NOT NULL CHECK (phase IN ('reprise','construction','performance')),
+        jour INTEGER NOT NULL CHECK (jour BETWEEN 0 AND 6),
+        type TEXT NOT NULL CHECK (type IN ('course','salle','freeletics','sante')),
+        modele TEXT NOT NULL,
+        titre TEXT NOT NULL,
+        est_decharge INTEGER NOT NULL DEFAULT 0,
+        est_test_chrono INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO seance_planifiee_v3
+        SELECT id, semaine, phase, jour, type, modele, titre, est_decharge, est_test_chrono
+        FROM seance_planifiee;
+      DROP TABLE seance_planifiee;
+      ALTER TABLE seance_planifiee_v3 RENAME TO seance_planifiee;
+    `,
+  },
+  {
+    version: 4,
+    nom: 'suivi_alimentaire',
+    sql: `
+      -- Consommations du jour : chips d'aliments/boissons (JSON array, comme journal_crohn.tags).
+      CREATE TABLE IF NOT EXISTS consommation_jour (
+        date TEXT PRIMARY KEY,                      -- AAAA-MM-JJ, une entrée/jour
+        aliments TEXT NOT NULL DEFAULT '[]'         -- JSON array de noms normalisés
+      );
+
+      -- Statut manuel par aliment (prime sur le verdict auto ; absence de ligne = aucun statut).
+      CREATE TABLE IF NOT EXISTS aliment_statut (
+        aliment TEXT PRIMARY KEY,
+        statut TEXT NOT NULL CHECK (statut IN ('tolere','a-eviter','a-tester')),
+        date_maj TEXT NOT NULL
+      );
+    `,
+  },
+  {
+    version: 5,
+    nom: 'source_seances_externes',
+    sql: `
+      -- Provenance d'une séance réalisée : saisie dans l'app ou importée de Santé Connect.
+      ALTER TABLE seance_realisee ADD COLUMN source TEXT NOT NULL DEFAULT 'app'
+        CHECK (source IN ('app','sante_connect'));
+      -- Identifiant du record chez la source externe — clé de dédoublonnage.
+      ALTER TABLE seance_realisee ADD COLUMN id_externe TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_seance_realisee_id_externe
+        ON seance_realisee(id_externe) WHERE id_externe IS NOT NULL;
+    `,
+  },
 ];
 
 /** Version cible = plus haute migration connue. */

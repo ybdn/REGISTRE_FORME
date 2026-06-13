@@ -40,6 +40,10 @@ export default function LayoutOnglets() {
         options={{ title: 'Journal Crohn', tabBarLabel: 'Journal', tabBarIcon: icone('edit-3') }}
       />
       <Tabs.Screen
+        name="alimentation"
+        options={{ title: 'Alimentation', tabBarLabel: 'Aliments', tabBarIcon: icone('coffee') }}
+      />
+      <Tabs.Screen
         name="tendances"
         options={{ title: 'Tendances', tabBarIcon: icone('trending-up') }}
       />

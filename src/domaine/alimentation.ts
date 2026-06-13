@@ -210,3 +210,43 @@ export function classerAliments(
       a.aliment.localeCompare(b.aliment),
   );
 }
+
+/** Compte des aliments classés par verdict, pour la bannière de synthèse. */
+export interface SyntheseAliments {
+  aEviter: number;
+  suspects: number;
+  aTester: number;
+  toleres: number;
+  neutres: number;
+}
+
+/** Résume un classement en comptant les aliments par verdict (lecture immédiate). */
+export function resumerClassements(classements: ClassementAliment[]): SyntheseAliments {
+  const synthese: SyntheseAliments = {
+    aEviter: 0,
+    suspects: 0,
+    aTester: 0,
+    toleres: 0,
+    neutres: 0,
+  };
+  for (const c of classements) {
+    switch (c.verdict) {
+      case 'a-eviter':
+        synthese.aEviter++;
+        break;
+      case 'suspect':
+        synthese.suspects++;
+        break;
+      case 'a-tester':
+        synthese.aTester++;
+        break;
+      case 'tolere':
+        synthese.toleres++;
+        break;
+      case 'neutre':
+        synthese.neutres++;
+        break;
+    }
+  }
+  return synthese;
+}

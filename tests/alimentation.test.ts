@@ -3,6 +3,7 @@ import {
   analyserAliments,
   classerAliments,
   normaliserAliment,
+  resumerClassements,
 } from '@/domaine/alimentation';
 import { ajouterJours } from '@/domaine/dates';
 import type { ConsommationJour, EntreeJournal, StatutAlimentManuel } from '@/domaine/types';
@@ -213,5 +214,31 @@ describe('classerAliments — verdicts et priorité du manuel', () => {
     expect(pizza?.verdict).toBe('neutre');
     expect(pizza?.raison).toContain("Pas encore d'analyse");
     expect(pizza?.raison).not.toContain('Aucun signal');
+  });
+});
+
+describe('resumerClassements', () => {
+  it('compte les aliments par verdict', () => {
+    // pizza → suspect (auto), riz → neutre, gluten → à éviter (manuel).
+    const journal = journalContinu(60, (i) => (i % 4 === 2 ? { douleur: 9 } : {}));
+    const consos = consosContinues(60, (i) => (i % 4 === 0 || i % 4 === 1 ? ['pizza'] : ['riz']));
+    const classements = classerAliments(consos, [statut('gluten', 'a-eviter')], journal, FIN);
+    expect(resumerClassements(classements)).toEqual({
+      aEviter: 1,
+      suspects: 1,
+      aTester: 0,
+      toleres: 0,
+      neutres: 1,
+    });
+  });
+
+  it('renvoie tout à zéro pour un classement vide', () => {
+    expect(resumerClassements([])).toEqual({
+      aEviter: 0,
+      suspects: 0,
+      aTester: 0,
+      toleres: 0,
+      neutres: 0,
+    });
   });
 });

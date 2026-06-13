@@ -47,8 +47,13 @@
       "expo-font",
       "react-native-health-connect"
     ],
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
     "experiments": {
-      "typedRoutes": true
+      "typedRoutes": true,
+      "baseUrl": "/crohnos"
     },
     "extra": {
       "router": {},

@@ -1,4 +1,6 @@
 import { couleurs } from '@/design/theme';
+import { sessionActuelle, surChangementAuth } from '@/donnees/auth';
+import { configurerHandlerNotifications } from '@/donnees/notifications';
 import { useMagasin } from '@/etat/magasin';
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono';
 import {
@@ -6,25 +8,22 @@ import {
   SpaceGrotesk_600SemiBold,
   useFonts,
 } from '@expo-google-fonts/space-grotesk';
-import * as Notifications from 'expo-notifications';
+import type { Session } from '@supabase/supabase-js';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import Connexion from './connexion';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-// Affiche les rappels locaux même app au premier plan.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
-});
+// Affiche les rappels locaux même app au premier plan (no-op sur web, cf. notifications.web.ts).
+configurerHandlerNotifications();
+
+// Sur web, la sync cloud impose une connexion (Phase 1) ; sur mobile, l'app reste 100 % locale.
+const SUR_WEB = Platform.OS === 'web';
 
 export default function Layout() {
   const [policesPretes, erreurPolices] = useFonts({
@@ -36,13 +35,31 @@ export default function Layout() {
   const etape = useMagasin((e) => e.etape);
   const initialiser = useMagasin((e) => e.initialiser);
   const [erreurInit, setErreurInit] = useState<string | null>(null);
+  // `undefined` = session en cours de vérification (web) ; `null` = déconnecté ; mobile : ignoré.
+  const [session, setSession] = useState<Session | null | undefined>(SUR_WEB ? undefined : null);
 
+  // Web : vérifier la session restaurée et observer connexion/déconnexion avant toute init.
   useEffect(() => {
+    if (!SUR_WEB) return;
+    let actif = true;
+    sessionActuelle()
+      .then((s) => actif && setSession(s))
+      .catch(() => actif && setSession(null));
+    const off = surChangementAuth((s) => setSession(s));
+    return () => {
+      actif = false;
+      off();
+    };
+  }, []);
+
+  // Initialisation du store : directe sur mobile, conditionnée à la session sur web.
+  useEffect(() => {
+    if (SUR_WEB && !session) return;
     initialiser().catch((err) => {
       console.error('Init échouée', err);
       setErreurInit(err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err));
     });
-  }, [initialiser]);
+  }, [initialiser, session]);
 
   // On ne bloque plus sur les polices : une erreur de police laisse passer (fallback système).
   const policesOk = policesPretes || !!erreurPolices;
@@ -50,6 +67,34 @@ export default function Layout() {
   useEffect(() => {
     if (policesOk && (pret || erreurInit)) SplashScreen.hideAsync().catch(() => {});
   }, [policesOk, pret, erreurInit]);
+
+  // Web : tant que la session n'est pas connue, on attend ; déconnecté → écran de connexion.
+  if (SUR_WEB && policesOk && session === undefined) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: couleurs.fond,
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: 12,
+        }}
+      >
+        <ActivityIndicator color={couleurs.salle} />
+        <Text style={{ color: couleurs.texteAttenue, fontSize: 13 }}>
+          Vérification de la session…
+        </Text>
+      </View>
+    );
+  }
+  if (SUR_WEB && policesOk && session === null) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <Connexion />
+      </SafeAreaProvider>
+    );
+  }
 
   // Erreur d'initialisation visible à l'écran (au lieu d'un spinner infini).
   if (erreurInit) {

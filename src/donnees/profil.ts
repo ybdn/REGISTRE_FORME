@@ -16,7 +16,7 @@ export interface Profil {
   dateDebutPousse?: DateISO;
 }
 
-interface ProfilRow {
+export interface ProfilRow {
   taille_cm: number;
   age: number;
   date_debut_programme: string;
@@ -27,9 +27,7 @@ interface ProfilRow {
   date_debut_pousse: string | null;
 }
 
-export async function lireProfil(db: SQLite.SQLiteDatabase): Promise<Profil | null> {
-  const r = await db.getFirstAsync<ProfilRow>('SELECT * FROM profil WHERE id = 1');
-  if (!r) return null;
+export function versProfil(r: ProfilRow): Profil {
   return {
     tailleCm: r.taille_cm,
     age: r.age,
@@ -42,11 +40,17 @@ export async function lireProfil(db: SQLite.SQLiteDatabase): Promise<Profil | nu
   };
 }
 
+export async function lireProfil(db: SQLite.SQLiteDatabase): Promise<Profil | null> {
+  const r = await db.getFirstAsync<ProfilRow>('SELECT * FROM profil WHERE id = 1');
+  return r ? versProfil(r) : null;
+}
+
 export async function enregistrerProfil(db: SQLite.SQLiteDatabase, p: Profil): Promise<void> {
+  // dirty=1 / maj_le : marque le profil à pousser au cloud (docs/07 §6.1, sync Phase 2).
   await db.runAsync(
     `INSERT OR REPLACE INTO profil
-       (id, taille_cm, age, date_debut_programme, disclaimer_accepte, date_acceptation_disclaimer, sante_optin, mode_pousse, date_debut_pousse)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, taille_cm, age, date_debut_programme, disclaimer_accepte, date_acceptation_disclaimer, sante_optin, mode_pousse, date_debut_pousse, dirty, maj_le)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
     [
       p.tailleCm,
       p.age,
@@ -56,6 +60,7 @@ export async function enregistrerProfil(db: SQLite.SQLiteDatabase, p: Profil): P
       p.santeOptin ? 1 : 0,
       p.modePousse ? 1 : 0,
       p.dateDebutPousse ?? null,
+      new Date().toISOString(),
     ],
   );
 }

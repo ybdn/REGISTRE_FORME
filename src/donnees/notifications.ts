@@ -7,6 +7,18 @@ import * as Notifications from 'expo-notifications';
 // Best-effort : aucune erreur (permission refusée, plateforme non supportée…) ne
 // doit jamais bloquer le reste de l'application.
 
+/** Affiche les rappels même app au premier plan. À appeler une fois au démarrage. */
+export function configurerHandlerNotifications(): void {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    }),
+  });
+}
+
 const ID_RAPPEL_JOURNAL = 'rappel-journal';
 const ID_RAPPEL_PESEE = 'rappel-pesee';
 const ID_RAPPEL_BILAN = 'rappel-bilan';

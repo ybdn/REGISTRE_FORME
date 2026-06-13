@@ -19,22 +19,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Détecter une nouvelle version
         id: v
+        env:
+          BEFORE: ${{ github.event.before }}
         run: |
-          VERSION=$(jq -r '.expo.version' app.json)
-          TAG="v$VERSION"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG déjà présent — aucune release à créer."
+          NEW=$(jq -r '.expo.version' app.json)
+          OLD=$(git show "${BEFORE}:app.json" 2>/dev/null | jq -r '.expo.version' 2>/dev/null || echo "")
+          TAG="v$NEW"
+          if [ "$OLD" = "$NEW" ]; then
+            echo "Version inchangée ($NEW) — pas de release."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          elif git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG déjà présent — pas de release."
             echo "go=false" >> "$GITHUB_OUTPUT"
           else
             echo "Nouvelle version : $TAG"
             echo "go=true" >> "$GITHUB_OUTPUT"
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "version=$NEW" >> "$GITHUB_OUTPUT"
             echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           fi
 
@@ -50,7 +56,7 @@ jobs:
 
       - name: Installer Node
         if: steps.v.outputs.go == 'true'
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: 22
 
@@ -68,7 +74,7 @@ jobs:
           # EAS installe les dépendances côté serveur).
           eas build --platform android --profile preview --non-interactive --wait --json > build.json
           APK_URL=$(jq -r '.[0].artifacts.applicationArchiveUrl' build.json)
-          BUILD_URL=$(jq -r '.[0].artifacts.buildUrl // ("https://expo.dev/accounts/ybdnx/projects/registre-forme/builds/" + .[0].id)' build.json)
+          BUILD_URL=$(jq -r '.[0].artifacts.buildUrl // ("https://expo.dev/accounts/ybdn/projects/registre-forme/builds/" + .[0].id)' build.json)
           echo "apk_url=$APK_URL" >> "$GITHUB_OUTPUT"
           echo "build_url=$BUILD_URL" >> "$GITHUB_OUTPUT"
 

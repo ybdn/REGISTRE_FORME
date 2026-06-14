@@ -2,10 +2,13 @@ name: Release
 
 # Publie une release GitHub (tag + notes + APK + QR) à chaque montée de version.
 # Déclenché quand app.json change sur main ; n'agit que si la version y est nouvelle.
+# Déclenchable aussi manuellement (workflow_dispatch) pour (re)publier la version
+# courante tant que son tag n'existe pas.
 on:
   push:
     branches: [main]
     paths: ["app.json"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -29,19 +32,26 @@ jobs:
           BEFORE: ${{ github.event.before }}
         run: |
           NEW=$(jq -r '.expo.version' app.json)
-          OLD=$(git show "${BEFORE}:app.json" 2>/dev/null | jq -r '.expo.version' 2>/dev/null || echo "")
           TAG="v$NEW"
-          if [ "$OLD" = "$NEW" ]; then
-            echo "Version inchangée ($NEW) — pas de release."
-            echo "go=false" >> "$GITHUB_OUTPUT"
-          elif git rev-parse "$TAG" >/dev/null 2>&1; then
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG déjà présent — pas de release."
             echo "go=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Nouvelle version : $TAG"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Déclenchement manuel : release $TAG"
             echo "go=true" >> "$GITHUB_OUTPUT"
             echo "version=$NEW" >> "$GITHUB_OUTPUT"
             echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          else
+            OLD=$(git show "${BEFORE}:app.json" 2>/dev/null | jq -r '.expo.version' 2>/dev/null || echo "")
+            if [ "$OLD" = "$NEW" ]; then
+              echo "Version inchangée ($NEW) — pas de release."
+              echo "go=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Nouvelle version : $TAG"
+              echo "go=true" >> "$GITHUB_OUTPUT"
+              echo "version=$NEW" >> "$GITHUB_OUTPUT"
+              echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Vérifier le secret EXPO_TOKEN
@@ -59,6 +69,13 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
+          cache: npm
+
+      - name: Installer les dépendances
+        if: steps.v.outputs.go == 'true'
+        # Requis localement : EAS CLI résout les config plugins (expo-router…)
+        # depuis node_modules avant d'uploader le build vers le cloud.
+        run: npm ci
 
       - name: Installer EAS CLI
         if: steps.v.outputs.go == 'true'
@@ -70,8 +87,8 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
-          # Build cloud, attend l'artefact, sortie JSON (node_modules non requis :
-          # EAS installe les dépendances côté serveur).
+          # Build cloud (les dépendances sont réinstallées côté serveur par EAS) ;
+          # attend l'artefact et émet le JSON du build.
           eas build --platform android --profile preview --non-interactive --wait --json > build.json
           APK_URL=$(jq -r '.[0].artifacts.applicationArchiveUrl' build.json)
           BUILD_URL=$(jq -r '.[0].artifacts.buildUrl // ("https://expo.dev/accounts/ybdn/projects/registre-forme/builds/" + .[0].id)' build.json)

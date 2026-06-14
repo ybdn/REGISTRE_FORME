@@ -5,12 +5,11 @@ import {
   Corps,
   Echelle,
   Ecran,
-  LigneNavigation,
-  Segments,
+  NavigateurDate,
   SousTitre,
 } from '@/design/composants';
 import { couleurs, espace, rayon, typo } from '@/design/theme';
-import { ajouterJours, entreeVeille, tagsParRecence } from '@/domaine';
+import { ajouterJours, entreeVeille, libelleJour, tagsParRecence } from '@/domaine';
 import type { EntreeJournal } from '@/domaine';
 import { useMagasin } from '@/etat/magasin';
 import * as Haptics from 'expo-haptics';
@@ -21,8 +20,9 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 const TAGS = ['repas-gras', 'repas-tardif', 'stress', 'sommeil-court', 'voyage', 'hydratation-ok'];
 
 // Journal express (doc 04 §4.2) : curseurs pré-positionnés sur la veille,
-// « identique à hier », tags récents en premier, saisie rétroactive limitée à hier.
-// Objectif : < 10 s.
+// « identique à hier », tags récents en premier. Navigation libre dans
+// l'historique (jour par jour, futur bloqué) pour compléter les jours passés.
+// Objectif : < 10 s pour la saisie du jour.
 
 /** Valeurs initiales : l'entrée du jour ciblé, sinon les curseurs de la veille. */
 function valeursInitiales(existante: EntreeJournal | undefined, veille: EntreeJournal | undefined) {
@@ -42,21 +42,24 @@ function valeursInitiales(existante: EntreeJournal | undefined, veille: EntreeJo
 export default function EcranJournal() {
   const router = useRouter();
   const { aujourdhui, journal, saisirJournal } = useMagasin();
-  const hier = ajouterJours(aujourdhui, -1);
 
-  // Saisie rétroactive explicite, limitée à hier (au-delà le signal est trop peu fiable).
+  // Navigation libre dans l'historique ; le jour ciblé démarre sur aujourd'hui.
   const [dateCible, setDateCible] = useState(aujourdhui);
   const existante = journal.find((e) => e.date === dateCible);
   const veille = entreeVeille(journal, dateCible);
+  const estAujourdhui = dateCible === aujourdhui;
 
   const [valeurs, setValeurs] = useState(() => valeursInitiales(existante, veille));
   const { douleur, energie, digestion, nbSelles, ballonnements, tags, note } = valeurs;
+  // Confirmation éphémère quand on enregistre un jour passé (on reste sur l'onglet).
+  const [enregistre, setEnregistre] = useState(false);
 
   const tagsOrdonnes = useMemo(() => tagsParRecence(journal, TAGS), [journal]);
 
   function changerDate(date: string) {
     if (date === dateCible) return;
     setDateCible(date);
+    setEnregistre(false);
     const entree = journal.find((e) => e.date === date);
     setValeurs(valeursInitiales(entree, entreeVeille(journal, date)));
   }
@@ -96,21 +99,25 @@ export default function EcranJournal() {
       note: note.trim() || undefined,
     });
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Retour au tableau de bord : l'adaptation éventuelle s'y affiche immédiatement.
-    router.replace('/');
+    if (estAujourdhui) {
+      // Retour au tableau de bord : l'adaptation du jour s'y affiche immédiatement.
+      router.replace('/');
+      return;
+    }
+    // Jour passé : on reste sur place avec une confirmation éphémère.
+    setEnregistre(true);
+    setTimeout(() => setEnregistre(false), 1500);
   }
 
   return (
     <Ecran>
       <Corps>Moins de 10 secondes. Tes signaux pilotent l’adaptation de la séance.</Corps>
 
-      <Segments
-        options={[
-          { valeur: aujourdhui, libelle: 'Aujourd’hui' },
-          { valeur: hier, libelle: 'Hier' },
-        ]}
-        valeur={dateCible}
-        onChange={changerDate}
+      <NavigateurDate
+        libelle={libelleJour(dateCible, aujourdhui)}
+        onPrecedent={() => changerDate(ajouterJours(dateCible, -1))}
+        onSuivant={() => changerDate(ajouterJours(dateCible, 1))}
+        suivantDesactive={estAujourdhui}
       />
 
       {veille && !existante ? (
@@ -199,14 +206,10 @@ export default function EcranJournal() {
         />
       </Carte>
 
-      <Bouton titre="Enregistrer" couleur={couleurs.sante} onPress={valider} />
-
-      <LigneNavigation
-        titre="Alimentation du jour"
-        detail="Coche ce que tu as mangé et bu"
-        icone="coffee"
+      <Bouton
+        titre={enregistre ? 'Enregistré ✓' : 'Enregistrer'}
         couleur={couleurs.sante}
-        onPress={() => router.push('/alimentation')}
+        onPress={valider}
       />
     </Ecran>
   );

@@ -1,4 +1,4 @@
-import { Bouton, Carte, Chip, Corps, Ecran, Segments, SousTitre } from '@/design/composants';
+import { Bouton, Carte, Chip, Corps, Ecran, NavigateurDate, SousTitre } from '@/design/composants';
 import { couleurs, espace, rayon, typo } from '@/design/theme';
 import {
   LIBELLES_STATUT,
@@ -7,6 +7,7 @@ import {
   ajouterJours,
   alimentsParRecence,
   classerAliments,
+  libelleJour,
   normaliserAliment,
   resumerClassements,
 } from '@/domaine';
@@ -56,9 +57,7 @@ export default function EcranAlimentation() {
     saisirConsommation,
     definirStatutAliment,
   } = useMagasin();
-  const hier = ajouterJours(aujourdhui, -1);
-
-  // Saisie rétroactive limitée à hier, comme le journal.
+  // Navigation libre dans l'historique (jour par jour, futur bloqué), comme le journal.
   const [dateCible, setDateCible] = useState(aujourdhui);
   const [selection, setSelection] = useState<string[]>(
     () => consommations.find((c) => c.date === aujourdhui)?.aliments ?? [],
@@ -153,13 +152,11 @@ export default function EcranAlimentation() {
         </View>
       ) : null}
 
-      <Segments
-        options={[
-          { valeur: aujourdhui, libelle: 'Aujourd’hui' },
-          { valeur: hier, libelle: 'Hier' },
-        ]}
-        valeur={dateCible}
-        onChange={changerDate}
+      <NavigateurDate
+        libelle={libelleJour(dateCible, aujourdhui)}
+        onPrecedent={() => changerDate(ajouterJours(dateCible, -1))}
+        onSuivant={() => changerDate(ajouterJours(dateCible, 1))}
+        suivantDesactive={dateCible === aujourdhui}
       />
 
       <Carte>
@@ -236,11 +233,17 @@ export default function EcranAlimentation() {
       {historique.length > 0 ? (
         <Carte>
           <SousTitre>Historique</SousTitre>
+          <Corps style={styles.indice}>Touche un jour pour le rouvrir et le modifier.</Corps>
           {historique.map((c) => (
-            <View key={c.date} style={styles.ligneHisto}>
+            <Pressable
+              key={c.date}
+              accessibilityRole="button"
+              onPress={() => changerDate(c.date)}
+              style={styles.ligneHisto}
+            >
               <Text style={styles.histoDate}>{formatJour(c.date)}</Text>
               <Text style={styles.histoAliments}>{c.aliments.join(', ')}</Text>
-            </View>
+            </Pressable>
           ))}
         </Carte>
       ) : null}

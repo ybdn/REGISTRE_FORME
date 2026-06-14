@@ -4,6 +4,8 @@
 export const couleurs = {
   fond: '#0F141B',
   surface: '#18202B',
+  /** Surface au survol pointeur (web desktop) — légèrement plus claire que `surface`. */
+  surfaceSurvol: '#202B39',
   trait: '#2A3442',
   texte: '#E6ECF2',
   texteAttenue: '#8C99A8',
@@ -49,3 +51,10 @@ export const rayon = {
   md: 10,
   lg: 14,
 } as const;
+
+/**
+ * Largeur de lecture maximale du contenu sur grand écran (web desktop). L'app est pensée
+ * mobile-first : au-delà de cette largeur le contenu est centré en colonne plutôt qu'étiré
+ * sur toute la fenêtre du navigateur. Sans effet sur mobile (écran < cette valeur).
+ */
+export const largeurMaxContenu = 760;

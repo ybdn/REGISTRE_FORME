@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import {
+  Platform,
   Pressable,
   type PressableProps,
   ScrollView,
@@ -13,9 +14,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Polyline } from 'react-native-svg';
-import { couleurs, espace, rayon, typo } from './theme';
+import { couleurs, espace, largeurMaxContenu, rayon, typo } from './theme';
 
 // Briques UI réutilisables. Esthétique sobre et dense, zéro gamification.
+
+// État fourni par le callback `style` d'un Pressable. `hovered` est ajouté par react-native-web
+// (survol pointeur) mais absent des types RN : on l'expose ici pour les affordances desktop.
+type EtatSurvol = { pressed: boolean; hovered?: boolean };
+
+/** L'app cible le pointeur (souris) uniquement sur web : ailleurs `hovered` reste indéfini. */
+const SUR_WEB = Platform.OS === 'web';
 
 /**
  * Conteneur d'écran. Par défaut le bord haut N'est PAS inclus dans le safe-area : les écrans
@@ -26,7 +34,11 @@ export function Ecran({ children, bordHaut = false }: { children: ReactNode; bor
   const edges = bordHaut ? (['top', 'left', 'right'] as const) : (['left', 'right'] as const);
   return (
     <SafeAreaView style={styles.ecran} edges={edges}>
-      <ScrollView contentContainerStyle={styles.scroll}>{children}</ScrollView>
+      {/* Le contenu reste une colonne centrée à largeur de lecture : sur desktop web il ne
+          s'étire pas sur toute la fenêtre, sur mobile la contrainte est sans effet. */}
+      <ScrollView contentContainerStyle={styles.scrollExterne}>
+        <View style={styles.contenu}>{children}</View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -99,9 +111,10 @@ export function Bouton({
       accessibilityRole="button"
       accessibilityState={{ disabled: !!disabled }}
       disabled={disabled}
-      style={({ pressed }) => [
+      style={({ pressed, hovered }: EtatSurvol) => [
         styles.bouton,
         principal ? { backgroundColor: couleur } : { borderWidth: 1, borderColor: couleurs.trait },
+        hovered && !disabled && styles.boutonSurvol,
         pressed && styles.boutonPresse,
         disabled && styles.boutonInactif,
         style as object,
@@ -135,7 +148,11 @@ export function Segments<T extends string>({
             accessibilityRole="button"
             accessibilityState={{ selected: actif }}
             onPress={() => onChange(o.valeur)}
-            style={[styles.segment, actif && { backgroundColor: couleur, borderColor: couleur }]}
+            style={({ hovered }: EtatSurvol) => [
+              styles.segment,
+              hovered && !actif && styles.survol,
+              actif && { backgroundColor: couleur, borderColor: couleur },
+            ]}
           >
             <Text style={[styles.segmentTexte, actif && styles.segmentTexteActif]}>
               {o.libelle}
@@ -172,7 +189,11 @@ export function NavigateurDate({
         accessibilityLabel="Jour précédent"
         disabled={precedentDesactive}
         onPress={onPrecedent}
-        style={[styles.navDateFleche, precedentDesactive && styles.navDateFlecheInactive]}
+        style={({ hovered }: EtatSurvol) => [
+          styles.navDateFleche,
+          hovered && !precedentDesactive && styles.navDateFlecheSurvol,
+          precedentDesactive && styles.navDateFlecheInactive,
+        ]}
       >
         <Feather name="chevron-left" size={22} color={couleurs.texte} />
       </Pressable>
@@ -182,7 +203,11 @@ export function NavigateurDate({
         accessibilityLabel="Jour suivant"
         disabled={suivantDesactive}
         onPress={onSuivant}
-        style={[styles.navDateFleche, suivantDesactive && styles.navDateFlecheInactive]}
+        style={({ hovered }: EtatSurvol) => [
+          styles.navDateFleche,
+          hovered && !suivantDesactive && styles.navDateFlecheSurvol,
+          suivantDesactive && styles.navDateFlecheInactive,
+        ]}
       >
         <Feather name="chevron-right" size={22} color={couleurs.texte} />
       </Pressable>
@@ -207,7 +232,11 @@ export function Chip({
       accessibilityRole="button"
       accessibilityState={{ selected: actif }}
       onPress={onPress}
-      style={[styles.chip, actif && { backgroundColor: couleur, borderColor: couleur }]}
+      style={({ hovered }: EtatSurvol) => [
+        styles.chip,
+        hovered && !actif && styles.survol,
+        actif && { backgroundColor: couleur, borderColor: couleur },
+      ]}
     >
       <Text style={[styles.chipTexte, actif && styles.chipTexteActif]}>{libelle}</Text>
     </Pressable>
@@ -281,7 +310,11 @@ export function LigneNavigation({
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.ligneNav, pressed && styles.boutonPresse]}
+      style={({ pressed, hovered }: EtatSurvol) => [
+        styles.ligneNav,
+        hovered && styles.survol,
+        pressed && styles.boutonPresse,
+      ]}
     >
       <Feather name={icone} size={18} color={couleur} />
       <View style={styles.ligneNavTextes}>
@@ -328,8 +361,9 @@ export function Echelle({
             accessibilityRole="button"
             accessibilityState={{ selected: actif }}
             onPress={() => onChange(v)}
-            style={[
+            style={({ hovered }: EtatSurvol) => [
               styles.echelleItem,
+              hovered && !actif && styles.survol,
               actif && { backgroundColor: couleur, borderColor: couleur },
             ]}
           >
@@ -388,7 +422,19 @@ export function Pastille({ couleur, plein }: { couleur: string; plein: boolean }
 
 const styles = StyleSheet.create({
   ecran: { flex: 1, backgroundColor: couleurs.fond },
-  scroll: { padding: espace.lg, gap: espace.lg, paddingBottom: espace.xxl },
+  // Conteneur du ScrollView : centre la colonne de contenu horizontalement (desktop web).
+  scrollExterne: { flexGrow: 1, alignItems: 'center' },
+  contenu: {
+    width: '100%',
+    maxWidth: largeurMaxContenu,
+    padding: espace.lg,
+    gap: espace.lg,
+    paddingBottom: espace.xxl,
+  },
+  // Retour visuel au survol pointeur (web). `pointerEvents` reste géré par Pressable.
+  survol: SUR_WEB
+    ? { backgroundColor: couleurs.surfaceSurvol, borderColor: couleurs.texteAttenue }
+    : {},
   carte: {
     backgroundColor: couleurs.surface,
     borderRadius: rayon.lg,
@@ -409,6 +455,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   boutonPresse: { opacity: 0.7 },
+  // Survol bouton : léger éclaircissement (conserve la couleur d'accent du bouton plein).
+  boutonSurvol: SUR_WEB ? { opacity: 0.9 } : {},
   boutonInactif: { opacity: 0.5 },
   boutonTexte: { fontFamily: typo.titre, fontSize: 15, color: couleurs.encre },
   segments: { flexDirection: 'row', gap: espace.sm },
@@ -436,7 +484,9 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: rayon.sm,
   },
+  navDateFlecheSurvol: SUR_WEB ? { backgroundColor: couleurs.surfaceSurvol } : {},
   navDateFlecheInactive: { opacity: 0.25 },
   navDateLibelle: { fontFamily: typo.titre, fontSize: 15, color: couleurs.texte },
   chip: {

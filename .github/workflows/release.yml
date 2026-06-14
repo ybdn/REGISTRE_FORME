@@ -81,6 +81,25 @@ jobs:
         if: steps.v.outputs.go == 'true'
         run: npm i -g eas-cli
 
+      - name: Injecter les clés Supabase dans le profil EAS preview
+        if: steps.v.outputs.go == 'true'
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          # Les EXPO_PUBLIC_* doivent être présentes là où Metro bundle (serveurs EAS) :
+          # on les pousse dans le bloc env du profil preview d'eas.json (lu localement par
+          # le CLI puis transmis au build). Clés publiques (RLS) tenues hors du repo : elles
+          # viennent des secrets GitHub. Sans elles, l'APK aurait supabaseConfigure=false.
+          if [ -z "$EXPO_PUBLIC_SUPABASE_URL" ] || [ -z "$EXPO_PUBLIC_SUPABASE_ANON_KEY" ]; then
+            echo "::error::Secrets EXPO_PUBLIC_SUPABASE_URL/ANON_KEY manquants."
+            exit 1
+          fi
+          tmp=$(mktemp)
+          jq --arg url "$EXPO_PUBLIC_SUPABASE_URL" --arg key "$EXPO_PUBLIC_SUPABASE_ANON_KEY" \
+            '.build.preview.env = { EXPO_PUBLIC_SUPABASE_URL: $url, EXPO_PUBLIC_SUPABASE_ANON_KEY: $key }' \
+            eas.json > "$tmp" && mv "$tmp" eas.json
+
       - name: Build APK via EAS (profil preview)
         if: steps.v.outputs.go == 'true'
         id: build

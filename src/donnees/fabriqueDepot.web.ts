@@ -1,4 +1,5 @@
 import { sessionActuelle } from './auth';
+import { creerCodecCoffre } from './coffreE2EE';
 import type { Depot } from './depot';
 import { creerDepotSupabase } from './depotSupabase';
 import { obtenirSupabase } from './supabaseClient';
@@ -10,5 +11,5 @@ import { obtenirSupabase } from './supabaseClient';
 export async function creerDepotParDefaut(): Promise<Depot> {
   const session = await sessionActuelle();
   if (!session) throw new Error('Connexion requise avant d’initialiser le dépôt.');
-  return creerDepotSupabase(obtenirSupabase(), session.user.id);
+  return creerDepotSupabase(obtenirSupabase(), session.user.id, creerCodecCoffre());
 }

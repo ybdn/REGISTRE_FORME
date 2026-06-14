@@ -69,9 +69,13 @@ Migrations versionnées dans `src/donnees/schema.ts` via `PRAGMA user_version`.
    online aujourd'hui ; sync mobile offline-first = Phase 2). Le moteur (`src/domaine/`) reste
    **100 % côté client** : aucune logique métier serveur (ADR-002), Supabase ne fait qu'authentifier
    + stocker + transporter. Isolation par RLS `user_id = auth.uid()` + TLS + chiffrement at-rest.
-   > ⚠️ **E2EE pas encore livré (Phase 3)** : au stade actuel le `contenu` est stocké en clair
-   > (`jsonb`) côté Supabase. Le chiffrement de bout en bout du contenu (passphrase, contenu opaque)
-   > est planifié et réutilisera `chiffrement.ts`.
+   > ✅ **E2EE livré (Phase 3)** : si l'utilisateur active le chiffrement de bout en bout, le
+   > `contenu` est chiffré côté client (AES-256-GCM, clé dérivée d'une passphrase distincte gardée
+   > **en mémoire seule**) avant tout envoi — Supabase ne voit que de l'opaque. Sel + canari de
+   > validation dans `MetaE2EE` (entité `e2ee`, en clair, non secrète) pour le multi-appareils.
+   > `src/donnees/e2ee.ts` (pur) + `coffreE2EE.ts` (clé runtime) + `e2eeCloud.ts`, via un
+   > `CodecContenu` injecté dans `depotSupabase.ts` et `transportSupabase.ts`. E2EE non activé →
+   > `contenu` en clair (`jsonb`), rétrocompatible.
 
    L'import de séances externes (Strava, Freeletics…) passe par Health Connect, la base santé locale
    d'Android (`src/donnees/santeConnect.ts`) — lecture opt-in, sur l'appareil ; absent sur web.
@@ -96,10 +100,12 @@ Migrations versionnées dans `src/donnees/schema.ts` via `PRAGMA user_version`.
   fonctionnalité (la feuille de route est dans `05`, les specs du moteur v2 dans `02`).
 - `docs/07` = plan d'architecture du **portage web (GitHub Pages) + sync Supabase** (auth compte
   unique, RLS, chiffrement E2EE, plan en 5 phases). Lire avant toute tâche liée au web ou au cloud.
-  **Phases 0, 1 et 2 livrées** : interface `Depot` (depot.ts) + depotSqlite/depotSupabase/depotMemoire,
+  **Phases 0, 1, 2 et 3 livrées** : interface `Depot` (depot.ts) + depotSqlite/depotSupabase/depotMemoire,
   auth + écran connexion, schéma Supabase (`supabase/schema.sql`) + RLS, shims `.web.ts`, déploiement
   GitHub Pages, **sync mobile offline-first** (migration SQLite v6 `dirty`/`maj_le` + `sync_etat`/
   `sync_suppressions` ; `src/donnees/sync/` = SyncManager LWW pur + registre + transport Supabase ;
-  déclencheurs démarrage/foreground/post-écriture ; carte sync dans Réglages). **Reste à faire** :
-  Phase 3 (E2EE + persistance de session mobile), Phase 4 (offline web).
+  déclencheurs démarrage/foreground/post-écriture ; carte sync dans Réglages), **E2EE opt-in**
+  (`e2ee.ts`/`coffreE2EE.ts`/`e2eeCloud.ts` ; `CodecContenu` injecté ; clé en mémoire ; meta sel+canari ;
+  garde de déverrouillage web + carte E2EE Réglages). **Reste à faire** : persistance de session
+  mobile (suivi), Phase 4 (offline web).
 - Ne jamais explorer `node_modules/` ; `grep` ciblé plutôt que lecture de répertoires entiers.

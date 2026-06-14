@@ -9,6 +9,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // On neutralise les modules natifs Expo tirés par l'import du store (aucun n'est exercé
 // par ces tests : la persistance passe par le dépôt mémoire injecté).
 vi.mock('expo-sqlite', () => ({}));
+// react-native + AsyncStorage sont tirés par supabaseClient (sélection du stockage de session) :
+// modules natifs au parsing incompatible Node, et non exercés ici (Supabase non configuré).
+vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+vi.mock('@react-native-async-storage/async-storage', () => ({
+  default: { getItem: async () => null, setItem: async () => {}, removeItem: async () => {} },
+}));
 vi.mock('expo-crypto', () => ({
   randomUUID: () => `id-${Math.random().toString(36).slice(2)}`,
 }));

@@ -1,9 +1,12 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import { Platform } from 'react-native';
 
 // Client Supabase (auth + stockage + transport uniquement, ADR-002).
 // Les clés EXPO_PUBLIC_* sont publiques par conception : l'isolation repose sur RLS.
-// Sur web, la session est persistée dans localStorage ; ailleurs (rendu hors navigateur),
-// on retombe sur un stockage mémoire pour que l'import reste sûr (jamais de crash).
+// Persistance de session : localStorage sur web, AsyncStorage sur mobile (sinon la session
+// est perdue à chaque redémarrage → app déconnectée, sans données distantes). Repli mémoire
+// uniquement pour les rendus hors navigateur/natif (jamais de crash à l'import).
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -12,6 +15,9 @@ const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 export const supabaseConfigure = Boolean(url && anonKey);
 
 function stockageSession() {
+  // Mobile : AsyncStorage (persistant entre redémarrages) — prérequis de la sync mobile.
+  if (Platform.OS !== 'web') return AsyncStorage;
+  // Web : localStorage (persistant dans le navigateur).
   if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
   // Repli mémoire : implémente l'API Storage minimale attendue par supabase-js.
   const memoire = new Map<string, string>();

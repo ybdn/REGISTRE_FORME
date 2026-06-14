@@ -147,6 +147,49 @@ export function Segments<T extends string>({
   );
 }
 
+/**
+ * Navigateur de date : ◀ libellé ▶. Permet de défiler jour par jour dans
+ * l'historique (journal, alimentation). La flèche « suivant » se désactive
+ * quand on ne peut pas avancer (futur bloqué).
+ */
+export function NavigateurDate({
+  libelle,
+  onPrecedent,
+  onSuivant,
+  suivantDesactive = false,
+  precedentDesactive = false,
+}: {
+  libelle: string;
+  onPrecedent: () => void;
+  onSuivant: () => void;
+  suivantDesactive?: boolean;
+  precedentDesactive?: boolean;
+}) {
+  return (
+    <View style={styles.navDate}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Jour précédent"
+        disabled={precedentDesactive}
+        onPress={onPrecedent}
+        style={[styles.navDateFleche, precedentDesactive && styles.navDateFlecheInactive]}
+      >
+        <Feather name="chevron-left" size={22} color={couleurs.texte} />
+      </Pressable>
+      <Text style={styles.navDateLibelle}>{libelle}</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Jour suivant"
+        disabled={suivantDesactive}
+        onPress={onSuivant}
+        style={[styles.navDateFleche, suivantDesactive && styles.navDateFlecheInactive]}
+      >
+        <Feather name="chevron-right" size={22} color={couleurs.texte} />
+      </Pressable>
+    </View>
+  );
+}
+
 /** Chip activable (tags du journal, aliments). */
 export function Chip({
   libelle,
@@ -379,6 +422,23 @@ const styles = StyleSheet.create({
   },
   segmentTexte: { fontFamily: typo.corps, fontSize: 13, color: couleurs.texteAttenue },
   segmentTexteActif: { color: couleurs.encre, fontFamily: typo.titre },
+  navDate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: couleurs.trait,
+    borderRadius: rayon.md,
+    paddingHorizontal: espace.xs,
+  },
+  navDateFleche: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navDateFlecheInactive: { opacity: 0.25 },
+  navDateLibelle: { fontFamily: typo.titre, fontSize: 15, color: couleurs.texte },
   chip: {
     paddingHorizontal: espace.md,
     paddingVertical: espace.xs + 2,

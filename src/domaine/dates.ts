@@ -43,3 +43,39 @@ export function ajouterJours(date: DateISO, n: number): DateISO {
   const jj = d.getUTCDate().toString().padStart(2, '0');
   return `${aa}-${mm}-${jj}`;
 }
+
+const JOURS_SEMAINE = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+const MOIS = [
+  'janv.',
+  'févr.',
+  'mars',
+  'avr.',
+  'mai',
+  'juin',
+  'juill.',
+  'août',
+  'sept.',
+  'oct.',
+  'nov.',
+  'déc.',
+];
+
+/** Jour de la semaine d'une date ISO (0 = dimanche … 6 = samedi), sans fuseau. */
+function jourSemaine(date: DateISO): number {
+  // versJourAbsolu(2000-01-01) correspond à un samedi : on cale le modulo dessus.
+  return (((versJourAbsolu(date) - versJourAbsolu('2000-01-01') + 6) % 7) + 7) % 7;
+}
+
+/**
+ * Libellé humain d'un jour, relatif à `aujourdhui` :
+ * « Aujourd'hui », « Hier », « Avant-hier », sinon « mer. 12 juin ».
+ * Pur et sans dépendance Intl (déterministe, insensible au fuseau).
+ */
+export function libelleJour(date: DateISO, aujourdhui: DateISO): string {
+  const ecart = ecartJours(aujourdhui, date);
+  if (ecart === 0) return "Aujourd'hui";
+  if (ecart === 1) return 'Hier';
+  if (ecart === 2) return 'Avant-hier';
+  const [, m, j] = date.split('-').map(Number) as [number, number, number];
+  return `${JOURS_SEMAINE[jourSemaine(date)]} ${j} ${MOIS[m - 1]}`;
+}

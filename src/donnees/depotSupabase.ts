@@ -10,12 +10,16 @@ import type {
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Depot } from './depot';
 import type { MesureCorporelle, SeancePlanifieeStockee } from './depots';
+import { type CodecContenu, codecIdentite } from './e2ee';
 import type { Profil } from './profil';
 
 // Implémentation Supabase (web online) de l'interface `Depot` (docs/07 §4-5).
 // Stockage générique : 1 table `enregistrements(user_id, entite, cle, contenu jsonb, supprime, maj_le)`.
 // Le contenu est l'objet domaine brut (camelCase) — round-trip direct, aucune conversion.
 // Aucune logique métier : le moteur recalcule tout l'état dérivé côté client (ADR-002).
+//
+// E2EE (Phase 3) : `codec` chiffre le `contenu` avant écriture et le déchiffre après lecture.
+// Par défaut neutre (clair) ; chiffrant quand l'E2EE est déverrouillé (cf. coffreE2EE.ts).
 
 const TABLE = 'enregistrements';
 
@@ -26,21 +30,25 @@ interface AdaptationStockee extends Adaptation {
   annulee: boolean;
 }
 
-export function creerDepotSupabase(client: SupabaseClient, userId: string): Depot {
+export function creerDepotSupabase(
+  client: SupabaseClient,
+  userId: string,
+  codec: CodecContenu = codecIdentite,
+): Depot {
   /** Lit tous les contenus non supprimés d'une entité (filtre serveur optionnel sur la clé). */
   async function lireContenus<T>(entite: string, cleDepuis?: string): Promise<T[]> {
     let q = client.from(TABLE).select('cle, contenu').eq('entite', entite).eq('supprime', false);
     if (cleDepuis !== undefined) q = q.gte('cle', cleDepuis);
     const { data, error } = await q;
     if (error) throw error;
-    return (data ?? []).map((r) => r.contenu as T);
+    return (data ?? []).map((r) => codec.dechiffrer(r.contenu) as T);
   }
 
   async function ecrire(entite: string, cle: string, contenu: unknown): Promise<void> {
     const { error } = await client
       .from(TABLE)
       .upsert(
-        { user_id: userId, entite, cle, contenu, supprime: false },
+        { user_id: userId, entite, cle, contenu: codec.chiffrer(contenu), supprime: false },
         { onConflict: 'user_id,entite,cle' },
       );
     if (error) throw error;
@@ -91,7 +99,7 @@ export function creerDepotSupabase(client: SupabaseClient, userId: string): Depo
             user_id: userId,
             entite: 'seance_planifiee',
             cle: planifiee.id,
-            contenu: planifiee,
+            contenu: codec.chiffrer(planifiee),
             supprime: false,
           };
         }),
@@ -111,7 +119,7 @@ export function creerDepotSupabase(client: SupabaseClient, userId: string): Depo
         .eq('supprime', false)
         .maybeSingle();
       if (error) throw error;
-      return (data?.contenu as Profil | undefined) ?? null;
+      return data?.contenu == null ? null : (codec.dechiffrer(data.contenu) as Profil);
     },
     enregistrerProfil: (p) => ecrire('profil', '1', p),
 
@@ -162,7 +170,8 @@ export function creerDepotSupabase(client: SupabaseClient, userId: string): Depo
         .maybeSingle();
       if (error) throw error;
       if (!data?.contenu) return;
-      await ecrire('adaptation', id, { ...(data.contenu as AdaptationStockee), annulee: true });
+      const courante = codec.dechiffrer(data.contenu) as AdaptationStockee;
+      await ecrire('adaptation', id, { ...courante, annulee: true });
     },
     async lireAdaptationsAppliquees(depuis) {
       const adaptations = await lireContenus<AdaptationStockee>('adaptation');

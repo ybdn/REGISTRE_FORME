@@ -1,13 +1,21 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { type CodecContenu, codecIdentite } from '../e2ee';
 import type { EnregistrementSync, TransportSync } from './types';
 
 // Côté distant de la sync : transport générique vers/depuis la table `enregistrements` (ADR-003).
 // Même format de stockage que depotSupabase (web) → web et mobile écrivent/lisent les mêmes lignes.
 // Aucune logique métier (ADR-002) ; l'isolation repose sur RLS `user_id = auth.uid()`.
+//
+// E2EE (Phase 3) : `codec` chiffre le `contenu` au push et le déchiffre au pull. Le SQLite local
+// reste en clair (coffre de l'appareil) ; seul ce qui part au cloud est chiffré.
 
 const TABLE = 'enregistrements';
 
-export function creerTransportSupabase(client: SupabaseClient, userId: string): TransportSync {
+export function creerTransportSupabase(
+  client: SupabaseClient,
+  userId: string,
+  codec: CodecContenu = codecIdentite,
+): TransportSync {
   return {
     async pousser(enrs) {
       if (enrs.length === 0) return [];
@@ -15,7 +23,7 @@ export function creerTransportSupabase(client: SupabaseClient, userId: string): 
         user_id: userId,
         entite: e.entite,
         cle: e.cle,
-        contenu: e.supprime ? null : e.contenu,
+        contenu: e.supprime ? null : codec.chiffrer(e.contenu),
         supprime: e.supprime,
       }));
       // Le serveur réhorodate `maj_le` (trigger) : on relit la valeur autoritaire pour aligner
@@ -47,7 +55,7 @@ export function creerTransportSupabase(client: SupabaseClient, userId: string): 
         (r): EnregistrementSync => ({
           entite: r.entite,
           cle: r.cle,
-          contenu: r.contenu,
+          contenu: codec.dechiffrer(r.contenu),
           supprime: r.supprime,
           majLe: r.maj_le,
         }),

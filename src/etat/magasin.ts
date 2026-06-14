@@ -24,8 +24,18 @@ import {
   obtenirModele,
 } from '@/domaine';
 import { type Identifiants, seConnecter, seDeconnecter, sessionActuelle } from '@/donnees/auth';
+import {
+  creerCodecCoffre,
+  definirCleE2EE,
+  definirConfigureE2EE,
+  e2eeConfigure,
+  e2eeDeverrouille,
+  effacerCoffreE2EE,
+} from '@/donnees/coffreE2EE';
 import type { Depot } from '@/donnees/depot';
 import type { MesureCorporelle, SeancePlanifieeStockee } from '@/donnees/depots';
+import { ErreurE2EE, initialiserMeta, ouvrirMeta } from '@/donnees/e2ee';
+import { ecrireMetaE2EE, lireMetaE2EE, rechiffrerTout } from '@/donnees/e2eeCloud';
 import { creerDepotParDefaut } from '@/donnees/fabriqueDepot';
 import { creerSyncLocal } from '@/donnees/fabriqueSync';
 import { synchroniserNotifications } from '@/donnees/notifications';
@@ -94,6 +104,24 @@ const SYNC_INITIAL: EtatSyncUI = {
   message: null,
 };
 
+/** État du chiffrement de bout en bout, exposé à l'UI (carte Réglages + garde web). */
+export type StatutE2EE = 'inactif' | 'enCours' | 'erreur';
+export interface EtatE2EE {
+  /** Une passphrase E2EE a déjà été définie pour ce compte (meta présente côté cloud). */
+  configure: boolean;
+  /** La clé est en mémoire pour cette session (E2EE déverrouillé). */
+  deverrouille: boolean;
+  statut: StatutE2EE;
+  message: string | null;
+}
+
+const E2EE_INITIAL: EtatE2EE = {
+  configure: false,
+  deverrouille: false,
+  statut: 'inactif',
+  message: null,
+};
+
 interface EtatApp {
   pret: boolean;
   etape: string; // sonde de diagnostic affichée pendant le chargement
@@ -111,6 +139,7 @@ interface EtatApp {
   scoreFormeDuJour: ScoreForme | null;
   baselineDuJour: Baseline | null;
   sync: EtatSyncUI;
+  e2ee: EtatE2EE;
 
   /** `fabrique` injecte un `Depot` alternatif (tests, web) ; défaut = SQLite local. */
   initialiser: (fabrique?: () => Promise<Depot>) => Promise<void>;
@@ -121,6 +150,10 @@ interface EtatApp {
   synchroniserMaintenant: (forcer?: boolean) => Promise<void>;
   /** Renonce au premier rapprochement proposé (garde l'appareil local, sans fusion). */
   ignorerRapprochement: () => void;
+  /** Active l'E2EE : définit la passphrase, dérive la clé et re-chiffre les données existantes. */
+  activerE2EE: (passphrase: string) => Promise<void>;
+  /** Déverrouille l'E2EE de cette session (saisie de la passphrase déjà définie). */
+  deverrouillerE2EE: (passphrase: string) => Promise<void>;
   creerProfil: (
     p: Omit<
       Profil,
@@ -160,11 +193,27 @@ export const useMagasin = create<EtatApp>((set, get) => ({
   scoreFormeDuJour: null,
   baselineDuJour: null,
   sync: SYNC_INITIAL,
+  e2ee: E2EE_INITIAL,
 
   async initialiser(fabrique = creerDepotParDefaut) {
     if (get().pret) return;
     if (initEnCours) return initEnCours;
     initEnCours = (async () => {
+      // E2EE (Phase 3) : si une passphrase a été définie pour ce compte mais pas encore saisie
+      // cette session, on s'arrête avant toute lecture (le contenu cloud est opaque) → la garde
+      // de déverrouillage prend le relais. Sans réseau / sans compte, `detecterE2EE` répond 'absent'.
+      const verrou = await detecterE2EE();
+      useMagasin.setState((e) => ({
+        e2ee: {
+          ...e.e2ee,
+          configure: verrou !== 'absent',
+          deverrouille: verrou === 'deverrouille',
+        },
+      }));
+      if (verrou === 'verrouille') {
+        set({ etape: 'chiffrement verrouillé' });
+        return;
+      }
       set({ etape: 'ouverture base' });
       depot = await fabrique();
       set({ etape: 'seed programme' });
@@ -178,7 +227,12 @@ export const useMagasin = create<EtatApp>((set, get) => ({
       // Sync cloud : câblage non bloquant (n'empêche jamais l'app de démarrer hors-ligne).
       void demarrerSync();
     })();
-    return initEnCours;
+    try {
+      await initEnCours;
+    } finally {
+      // Libère la garde anti-double-init : permet une re-init après déverrouillage E2EE.
+      initEnCours = null;
+    }
   },
 
   async connecterSync(identifiants) {
@@ -186,8 +240,22 @@ export const useMagasin = create<EtatApp>((set, get) => ({
     set({ sync: { ...get().sync, statut: 'enCours', message: null } });
     try {
       const session = await seConnecter(identifiants);
-      transport = creerTransportSupabase(obtenirSupabase(), session.user.id);
+      transport = creerTransportSupabase(obtenirSupabase(), session.user.id, creerCodecCoffre());
       set({ sync: { ...get().sync, connecte: true, email: session.user.email ?? null } });
+      // E2EE : si ce compte est chiffré et pas encore déverrouillé, on diffère la 1re synchro
+      // (impossible de pousser en clair) — l'utilisateur saisit sa passphrase dans la carte E2EE.
+      const verrou = await detecterE2EE();
+      set((e) => ({
+        e2ee: {
+          ...e.e2ee,
+          configure: verrou !== 'absent',
+          deverrouille: verrou === 'deverrouille',
+        },
+      }));
+      if (verrou === 'verrouille') {
+        set({ sync: { ...get().sync, statut: 'inactif', message: null } });
+        return;
+      }
       await get().synchroniserMaintenant();
     } catch (e) {
       set({
@@ -203,17 +271,30 @@ export const useMagasin = create<EtatApp>((set, get) => ({
   async deconnecterSync() {
     await seDeconnecter().catch(() => {});
     transport = null;
+    effacerCoffreE2EE(); // oublie la clé en mémoire (E2EE re-verrouillé)
     if (timerSync) {
       clearTimeout(timerSync);
       timerSync = null;
     }
     set({
       sync: { ...get().sync, connecte: false, email: null, statut: 'inactif', message: null },
+      e2ee: E2EE_INITIAL,
     });
   },
 
   async synchroniserMaintenant(forcer = false) {
     if (!syncLocal || !transport || !depot) return;
+    // E2EE verrouillé : pousser/lire est impossible (on ne veut surtout pas pousser en clair).
+    if (e2eeConfigure() && !e2eeDeverrouille()) {
+      set({
+        sync: {
+          ...get().sync,
+          statut: 'erreur',
+          message: 'Chiffrement verrouillé : saisis ta phrase de chiffrement (Réglages).',
+        },
+      });
+      return;
+    }
     set({ sync: { ...get().sync, statut: 'enCours', message: null } });
     try {
       const res = await synchroniser(syncLocal, transport, syncLocal, { forcer });
@@ -242,6 +323,72 @@ export const useMagasin = create<EtatApp>((set, get) => ({
 
   ignorerRapprochement() {
     set({ sync: { ...get().sync, statut: 'inactif' } });
+  },
+
+  async activerE2EE(passphrase) {
+    if (!supabaseConfigure) {
+      set((e) => ({
+        e2ee: { ...e.e2ee, statut: 'erreur', message: 'Synchronisation non configurée.' },
+      }));
+      return;
+    }
+    const session = await sessionActuelle();
+    if (!session) {
+      set((e) => ({
+        e2ee: {
+          ...e.e2ee,
+          statut: 'erreur',
+          message: 'Connecte-toi avant d’activer le chiffrement.',
+        },
+      }));
+      return;
+    }
+    set((e) => ({ e2ee: { ...e.e2ee, statut: 'enCours', message: null } }));
+    try {
+      const client = obtenirSupabase();
+      if (await lireMetaE2EE(client, session.user.id)) {
+        throw new ErreurE2EE(
+          'Le chiffrement est déjà activé sur ce compte. Utilise « Déverrouiller ».',
+        );
+      }
+      const { meta, cle } = initialiserMeta(passphrase);
+      definirConfigureE2EE(true);
+      definirCleE2EE(cle);
+      // Meta d'abord : un état mixte (clair + chiffré) reste lisible une fois déverrouillé, alors
+      // que des données chiffrées SANS meta seraient irrécupérables. Puis migration de l'existant.
+      await ecrireMetaE2EE(client, session.user.id, meta);
+      await rechiffrerTout(client, session.user.id, creerCodecCoffre());
+      set((e) => ({
+        e2ee: { ...e.e2ee, configure: true, deverrouille: true, statut: 'inactif', message: null },
+      }));
+      await rafraichirApresE2EE();
+    } catch (e) {
+      set((s) => ({ e2ee: { ...s.e2ee, statut: 'erreur', message: messageE2EE(e) } }));
+    }
+  },
+
+  async deverrouillerE2EE(passphrase) {
+    const session = await sessionActuelle();
+    if (!session) {
+      set((e) => ({
+        e2ee: { ...e.e2ee, statut: 'erreur', message: 'Connecte-toi avant de déverrouiller.' },
+      }));
+      return;
+    }
+    set((e) => ({ e2ee: { ...e.e2ee, statut: 'enCours', message: null } }));
+    try {
+      const meta = await lireMetaE2EE(obtenirSupabase(), session.user.id);
+      if (!meta) throw new ErreurE2EE('Aucun chiffrement à déverrouiller sur ce compte.');
+      const cle = ouvrirMeta(passphrase, meta); // lève si la passphrase est incorrecte (canari)
+      definirConfigureE2EE(true);
+      definirCleE2EE(cle);
+      set((e) => ({
+        e2ee: { ...e.e2ee, configure: true, deverrouille: true, statut: 'inactif', message: null },
+      }));
+      await rafraichirApresE2EE();
+    } catch (e) {
+      set((s) => ({ e2ee: { ...s.e2ee, statut: 'erreur', message: messageE2EE(e) } }));
+    }
   },
 
   async creerProfil(p) {
@@ -489,11 +636,63 @@ async function demarrerSync(): Promise<void> {
   useMagasin.setState((e) => ({ sync: { ...e.sync, disponible: true } }));
   const session = await sessionActuelle();
   if (!session) return; // sync disponible mais pas encore connecté
-  transport = creerTransportSupabase(obtenirSupabase(), session.user.id);
+  transport = creerTransportSupabase(obtenirSupabase(), session.user.id, creerCodecCoffre());
+  const verrou = await detecterE2EE();
   useMagasin.setState((e) => ({
     sync: { ...e.sync, connecte: true, email: session.user.email ?? null },
+    e2ee: {
+      ...e.e2ee,
+      configure: verrou !== 'absent',
+      deverrouille: verrou === 'deverrouille',
+    },
   }));
+  // E2EE verrouillé : on attend le déverrouillage (la garde de synchroniserMaintenant l'impose).
+  if (verrou === 'verrouille') return;
   await useMagasin.getState().synchroniserMaintenant();
+}
+
+/** Résultat de la détection E2EE pour un compte connecté. */
+type DetectionE2EE = 'absent' | 'verrouille' | 'deverrouille';
+
+/**
+ * Inspecte l'état E2EE du compte : présence d'une meta côté cloud (= activé) et clé en mémoire
+ * (= déverrouillé). Sans réseau, sans Supabase ou sans session, répond 'absent' (mode local).
+ */
+async function detecterE2EE(): Promise<DetectionE2EE> {
+  if (!supabaseConfigure) return 'absent';
+  const session = await sessionActuelle();
+  if (!session) return 'absent';
+  const meta = await lireMetaE2EE(obtenirSupabase(), session.user.id);
+  if (!meta) {
+    definirConfigureE2EE(false);
+    return 'absent';
+  }
+  definirConfigureE2EE(true);
+  return e2eeDeverrouille() ? 'deverrouille' : 'verrouille';
+}
+
+/** Après activation/déverrouillage : (re)charge les données déchiffrables puis relance la sync. */
+async function rafraichirApresE2EE(): Promise<void> {
+  // Web : l'init s'était arrêtée au verrou → relancer l'init complète maintenant déverrouillée.
+  if (!useMagasin.getState().pret) {
+    await useMagasin.getState().initialiser();
+    return;
+  }
+  if (depot) {
+    const profil = await depot.lireProfil();
+    await recharger(useMagasin.setState, depot, profil, useMagasin.getState().aujourdhui, {
+      declencherSync: false,
+    });
+  }
+  await useMagasin
+    .getState()
+    .synchroniserMaintenant()
+    .catch(() => {});
+}
+
+/** Message d'erreur affichable (ErreurE2EE porte déjà un message rédigé). */
+function messageE2EE(e: unknown): string {
+  return e instanceof Error ? e.message : 'Opération de chiffrement impossible.';
 }
 
 /** Push différé (debounce) : coalesce une rafale d'écritures en une seule passe de sync. */

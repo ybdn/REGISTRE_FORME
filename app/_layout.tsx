@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Connexion from './connexion';
+import Deverrouillage from './deverrouillage';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -33,6 +34,7 @@ export default function Layout() {
   });
   const pret = useMagasin((e) => e.pret);
   const etape = useMagasin((e) => e.etape);
+  const e2ee = useMagasin((e) => e.e2ee);
   const initialiser = useMagasin((e) => e.initialiser);
   const [erreurInit, setErreurInit] = useState<string | null>(null);
   // `undefined` = session en cours de vérification (web) ; `null` = déconnecté ; mobile : ignoré.
@@ -101,6 +103,17 @@ export default function Layout() {
       <SafeAreaProvider>
         <StatusBar style="light" />
         <Connexion />
+      </SafeAreaProvider>
+    );
+  }
+
+  // Web : compte chiffré (E2EE) pas encore déverrouillé cette session → saisie de la passphrase
+  // avant toute lecture (le contenu cloud est opaque tant que la clé n'est pas en mémoire).
+  if (SUR_WEB && policesOk && session && e2ee.configure && !e2ee.deverrouille) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <Deverrouillage />
       </SafeAreaProvider>
     );
   }

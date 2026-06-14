@@ -35,7 +35,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Export web statique
-        # Le sous-chemin /crohnos est fourni par app.json (experiments.baseUrl).
+        # Le sous-chemin /REGISTRE_FORME est fourni par app.json (experiments.baseUrl).
         run: npx expo export -p web
       - name: Repli SPA (404 → index)
         run: cp dist/index.html dist/404.html

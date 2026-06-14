@@ -12,7 +12,10 @@ import { type StatutSync, useMagasin } from '@/etat/magasin';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+
+/** Le chiffrement de bout en bout concerne tout contexte cloud : web (toujours connecté) ou mobile connecté. */
+const EST_WEB = Platform.OS === 'web';
 
 /** Libellé lisible de l'état de synchronisation. */
 function libelleSync(statut: StatutSync, derniere: string | null): string {
@@ -59,9 +62,15 @@ export default function EcranReglages() {
   const deconnecterSync = useMagasin((e) => e.deconnecterSync);
   const synchroniserMaintenant = useMagasin((e) => e.synchroniserMaintenant);
   const ignorerRapprochement = useMagasin((e) => e.ignorerRapprochement);
+  const e2ee = useMagasin((e) => e.e2ee);
+  const activerE2EE = useMagasin((e) => e.activerE2EE);
+  const deverrouillerE2EE = useMagasin((e) => e.deverrouillerE2EE);
 
   const [emailSync, setEmailSync] = useState('');
   const [mdpSync, setMdpSync] = useState('');
+  const [passE2EE, setPassE2EE] = useState('');
+  const [passE2EE2, setPassE2EE2] = useState('');
+  const [erreurE2EE, setErreurE2EE] = useState<string | null>(null);
 
   const [passExport, setPassExport] = useState('');
   const [passExport2, setPassExport2] = useState('');
@@ -117,6 +126,35 @@ export default function EcranReglages() {
       'Sauvegarde restaurée. Tes données ont été remplacées.',
     );
   }
+
+  const enCoursE2EE = e2ee.statut === 'enCours';
+
+  function onActiverE2EE() {
+    setErreurE2EE(null);
+    if (passE2EE.length < 8) {
+      setErreurE2EE('Choisis une phrase de chiffrement d’au moins 8 caractères.');
+      return;
+    }
+    if (passE2EE !== passE2EE2) {
+      setErreurE2EE('Les deux phrases de chiffrement ne correspondent pas.');
+      return;
+    }
+    void activerE2EE(passE2EE).then(() => {
+      setPassE2EE('');
+      setPassE2EE2('');
+    });
+  }
+
+  function onDeverrouillerE2EE() {
+    setErreurE2EE(null);
+    if (passE2EE.length === 0) {
+      setErreurE2EE('Saisis ta phrase de chiffrement.');
+      return;
+    }
+    void deverrouillerE2EE(passE2EE).then(() => setPassE2EE(''));
+  }
+
+  const messageE2EE = erreurE2EE ?? (e2ee.statut === 'erreur' ? e2ee.message : null);
 
   return (
     <Ecran>
@@ -211,6 +249,78 @@ export default function EcranReglages() {
                 disabled={sync.statut === 'enCours'}
                 onPress={() => void connecterSync({ email: emailSync.trim(), motDePasse: mdpSync })}
               />
+            </>
+          )}
+        </Carte>
+      ) : null}
+
+      {/* Chiffrement de bout en bout (opt-in) — docs/07 Phase 3. */}
+      {sync.connecte || EST_WEB ? (
+        <Carte>
+          <SousTitre>Chiffrement de bout en bout</SousTitre>
+          {e2ee.deverrouille ? (
+            <>
+              <View style={styles.ligneSync}>
+                <View style={[styles.pastille, { backgroundColor: couleurs.freeletics }]} />
+                <Text style={styles.etatSync}>Actif — tes données cloud sont chiffrées</Text>
+              </View>
+              <Corps>
+                Le serveur ne stocke que de l’opaque, illisible sans ta phrase de chiffrement. Cette
+                phrase reste sur l’appareil (jamais envoyée) et n’est pas conservée entre deux
+                ouvertures de l’app.
+              </Corps>
+            </>
+          ) : e2ee.configure ? (
+            <>
+              <Corps>
+                Ce compte est chiffré. Saisis ta phrase de chiffrement pour déverrouiller et
+                synchroniser sur cet appareil.
+              </Corps>
+              <Champ
+                libelle="Phrase de chiffrement"
+                valeur={passE2EE}
+                onChange={setPassE2EE}
+                secret
+              />
+              {messageE2EE ? <Text style={styles.erreurSync}>{messageE2EE}</Text> : null}
+              <Bouton
+                titre={enCoursE2EE ? 'Déverrouillage…' : 'Déverrouiller'}
+                couleur={couleurs.freeletics}
+                disabled={enCoursE2EE}
+                onPress={onDeverrouillerE2EE}
+              />
+            </>
+          ) : (
+            <>
+              <Corps>
+                Chiffre tes données santé sur l’appareil avant de les envoyer : le serveur ne pourra
+                jamais les lire. Choisis une phrase de chiffrement distincte de ton mot de passe de
+                connexion.
+              </Corps>
+              <Champ
+                libelle="Phrase de chiffrement"
+                valeur={passE2EE}
+                onChange={setPassE2EE}
+                secret
+                placeholder="8 caractères minimum"
+              />
+              <Champ
+                libelle="Confirmer la phrase"
+                valeur={passE2EE2}
+                onChange={setPassE2EE2}
+                secret
+              />
+              {messageE2EE ? <Text style={styles.erreurSync}>{messageE2EE}</Text> : null}
+              <Bouton
+                titre={enCoursE2EE ? 'Activation…' : 'Activer le chiffrement'}
+                couleur={couleurs.salle}
+                disabled={enCoursE2EE}
+                onPress={onActiverE2EE}
+              />
+              <Corps style={styles.avertE2EE}>
+                ⚠️ Phrase de chiffrement perdue = données cloud irrécupérables (aucune récupération
+                serveur possible). Note-la en lieu sûr.
+              </Corps>
             </>
           )}
         </Carte>
@@ -317,4 +427,5 @@ const styles = StyleSheet.create({
   pastille: { width: 10, height: 10, borderRadius: 5 },
   etatSync: { color: couleurs.texteAttenue, fontSize: 13 },
   erreurSync: { color: couleurs.sante, fontSize: 13, marginBottom: espace.sm },
+  avertE2EE: { color: couleurs.texteAttenue, fontSize: 12, marginTop: espace.xs },
 });

@@ -3,7 +3,7 @@
     "name": "REGISTRE.FORME",
     "slug": "registre-forme",
     "owner": "ybdn",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "orientation": "portrait",
     "scheme": "registreforme",
     "userInterfaceStyle": "dark",

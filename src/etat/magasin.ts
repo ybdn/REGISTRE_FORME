@@ -52,6 +52,7 @@ import { synchroniser } from '@/donnees/sync/syncManager';
 import { creerTransportSupabase } from '@/donnees/sync/transportSupabase';
 import type { TransportSync } from '@/donnees/sync/types';
 import * as Crypto from 'expo-crypto';
+import { Platform } from 'react-native';
 import { create } from 'zustand';
 
 // Store applicatif unique (KISS). La persistance est gardée hors de l'état (non sérialisable)
@@ -199,20 +200,26 @@ export const useMagasin = create<EtatApp>((set, get) => ({
     if (get().pret) return;
     if (initEnCours) return initEnCours;
     initEnCours = (async () => {
-      // E2EE (Phase 3) : si une passphrase a été définie pour ce compte mais pas encore saisie
-      // cette session, on s'arrête avant toute lecture (le contenu cloud est opaque) → la garde
-      // de déverrouillage prend le relais. Sans réseau / sans compte, `detecterE2EE` répond 'absent'.
-      const verrou = await detecterE2EE();
-      useMagasin.setState((e) => ({
-        e2ee: {
-          ...e.e2ee,
-          configure: verrou !== 'absent',
-          deverrouille: verrou === 'deverrouille',
-        },
-      }));
-      if (verrou === 'verrouille') {
-        set({ etape: 'chiffrement verrouillé' });
-        return;
+      // E2EE (Phase 3) — WEB UNIQUEMENT. Sur web, les données sont online-first (depotSupabase)
+      // donc opaques tant que la clé n'est pas en mémoire : si une passphrase est définie mais pas
+      // encore saisie, on s'arrête avant toute lecture (la garde de déverrouillage prend le relais).
+      // Sur mobile, la base SQLite est LOCALE et en clair : le démarrage ne doit JAMAIS dépendre du
+      // réseau (`detecterE2EE` interroge Supabase) ni d'un verrou E2EE — sinon, une session restaurée
+      // au cold start gèle le splash (invariant #1 : l'app démarre toujours hors-ligne). La détection
+      // E2EE + la sync mobiles sont gérées par `demarrerSync()`, non bloquant.
+      if (Platform.OS === 'web') {
+        const verrou = await detecterE2EE();
+        useMagasin.setState((e) => ({
+          e2ee: {
+            ...e.e2ee,
+            configure: verrou !== 'absent',
+            deverrouille: verrou === 'deverrouille',
+          },
+        }));
+        if (verrou === 'verrouille') {
+          set({ etape: 'chiffrement verrouillé' });
+          return;
+        }
       }
       set({ etape: 'ouverture base' });
       depot = await fabrique();

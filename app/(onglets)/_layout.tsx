@@ -1,6 +1,14 @@
-import { couleurs, typo } from '@/design/theme';
+import { couleurs, largeurMaxContenu, typo } from '@/design/theme';
 import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { Platform } from 'react-native';
+
+// Sur web desktop, on centre la barre d'onglets à la largeur de lecture du contenu plutôt
+// que de l'étirer en bas de la fenêtre (rendu « appli mobile » indésirable sur grand écran).
+const styleBarreWeb =
+  Platform.OS === 'web'
+    ? { maxWidth: largeurMaxContenu, width: '100%' as const, alignSelf: 'center' as const }
+    : null;
 
 // Tab bar des quatre espaces du quotidien. Les écrans de détail (séance, forme,
 // bilan…) restent des routes Stack à la racine : ils recouvrent la tab bar.
@@ -20,6 +28,7 @@ export default function LayoutOnglets() {
         tabBarStyle: {
           backgroundColor: couleurs.fond,
           borderTopColor: couleurs.trait,
+          ...styleBarreWeb,
         },
         tabBarActiveTintColor: couleurs.texte,
         tabBarInactiveTintColor: couleurs.texteAttenue,

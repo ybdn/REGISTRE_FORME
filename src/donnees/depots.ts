@@ -2,7 +2,9 @@ import type {
   Adaptation,
   ConsommationJour,
   EntreeJournal,
+  HydratationJour,
   Phase,
+  PriseHydrique,
   SeanceRealisee,
   SourceSeance,
   StatutAlimentManuel,
@@ -92,18 +94,28 @@ export async function enregistrerJournal(
   e: EntreeJournal,
 ): Promise<void> {
   await db.runAsync(
-    `INSERT INTO journal_crohn (date, douleur, energie, digestion, nb_selles, ballonnements, tags, note, dirty, maj_le)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+    `INSERT INTO journal_crohn
+       (date, douleur, energie, digestion, nb_selles, consistance_selles, sang_selles, glaires,
+        urgence_fecale, difficulte_evacuation, ballonnements, tags, note, dirty, maj_le)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
      ON CONFLICT(date) DO UPDATE SET
        douleur=excluded.douleur, energie=excluded.energie, digestion=excluded.digestion,
-       nb_selles=excluded.nb_selles, ballonnements=excluded.ballonnements,
-       tags=excluded.tags, note=excluded.note, dirty=1, maj_le=excluded.maj_le`,
+       nb_selles=excluded.nb_selles, consistance_selles=excluded.consistance_selles,
+       sang_selles=excluded.sang_selles, glaires=excluded.glaires,
+       urgence_fecale=excluded.urgence_fecale, difficulte_evacuation=excluded.difficulte_evacuation,
+       ballonnements=excluded.ballonnements, tags=excluded.tags, note=excluded.note,
+       dirty=1, maj_le=excluded.maj_le`,
     [
       e.date,
       e.douleur,
       e.energie,
       e.digestion,
       e.nbSelles,
+      e.consistanceSelles,
+      e.sangSelles ? 1 : 0,
+      e.glaires ? 1 : 0,
+      e.urgenceFecale ? 1 : 0,
+      e.difficulteEvacuation ? 1 : 0,
       e.ballonnements ? 1 : 0,
       JSON.stringify(e.tags),
       e.note ?? null,
@@ -131,6 +143,11 @@ export interface JournalRow {
   energie: number;
   digestion: number;
   nb_selles: number;
+  consistance_selles: number;
+  sang_selles: number;
+  glaires: number;
+  urgence_fecale: number;
+  difficulte_evacuation: number;
   ballonnements: number;
   tags: string;
   note: string | null;
@@ -143,6 +160,11 @@ export function versEntreeJournal(r: JournalRow): EntreeJournal {
     energie: r.energie,
     digestion: r.digestion,
     nbSelles: r.nb_selles,
+    consistanceSelles: r.consistance_selles,
+    sangSelles: r.sang_selles === 1,
+    glaires: r.glaires === 1,
+    urgenceFecale: r.urgence_fecale === 1,
+    difficulteEvacuation: r.difficulte_evacuation === 1,
     ballonnements: r.ballonnements === 1,
     tags: JSON.parse(r.tags) as string[],
     note: r.note ?? undefined,
@@ -233,6 +255,42 @@ export async function lireStatutsAliments(
 ): Promise<StatutAlimentManuel[]> {
   const lignes = await db.getAllAsync<StatutRow>('SELECT * FROM aliment_statut ORDER BY aliment');
   return lignes.map(versStatutAliment);
+}
+
+// ── Suivi de l'hydratation ──────────────────────────────────────────────────
+
+export async function enregistrerHydratation(
+  db: SQLite.SQLiteDatabase,
+  h: HydratationJour,
+): Promise<void> {
+  await db.runAsync(
+    `INSERT INTO hydratation_jour (date, prises, dirty, maj_le)
+     VALUES (?, ?, 1, ?)
+     ON CONFLICT(date) DO UPDATE SET prises=excluded.prises, dirty=1, maj_le=excluded.maj_le`,
+    [h.date, JSON.stringify(h.prises), maintenant()],
+  );
+}
+
+export async function lireHydratations(
+  db: SQLite.SQLiteDatabase,
+  depuis?: string,
+): Promise<HydratationJour[]> {
+  const lignes = depuis
+    ? await db.getAllAsync<HydratationRow>(
+        'SELECT * FROM hydratation_jour WHERE date >= ? ORDER BY date',
+        [depuis],
+      )
+    : await db.getAllAsync<HydratationRow>('SELECT * FROM hydratation_jour ORDER BY date');
+  return lignes.map(versHydratation);
+}
+
+export interface HydratationRow {
+  date: string;
+  prises: string;
+}
+
+export function versHydratation(r: HydratationRow): HydratationJour {
+  return { date: r.date, prises: JSON.parse(r.prises) as PriseHydrique[] };
 }
 
 // ── Séances réalisées ───────────────────────────────────────────────────────

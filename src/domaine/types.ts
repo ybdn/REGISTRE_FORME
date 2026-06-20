@@ -18,7 +18,7 @@ export type VarianteSeance = 'normale' | 'moderee' | 'allegee' | 'repos';
 
 /**
  * Entrée quotidienne du journal Crohn (saisie < 20 s).
- * Échelles : douleur 0-10, énergie 1-5, digestion 1-5.
+ * Échelles : douleur 0-10, énergie 1-5, digestion 1-5, consistance 1-7 (Bristol).
  */
 export interface EntreeJournal {
   date: DateISO;
@@ -26,6 +26,12 @@ export interface EntreeJournal {
   energie: number; // 1-5 (5 = pleine forme)
   digestion: number; // 1-5 (5 = parfaite)
   nbSelles: number;
+  /** Échelle de Bristol 1-7 (1 = durs/constipation, 4 = normale, 7 = entièrement liquide). */
+  consistanceSelles: number;
+  sangSelles: boolean; // sang visible — symptôme d'alerte MICI
+  glaires: boolean; // marqueur fréquent de poussée inflammatoire
+  urgenceFecale: boolean; // besoin impérieux / difficulté à se retenir
+  difficulteEvacuation: boolean; // constipation, efforts importants
   ballonnements: boolean;
   tags: string[]; // ex. ['repas-gras', 'stress']
   note?: string;
@@ -38,6 +44,26 @@ export interface EntreeJournal {
 export interface ConsommationJour {
   date: DateISO;
   aliments: string[]; // ex. ['café', 'pizza', 'yaourt nature']
+}
+
+/**
+ * Une prise de boisson dans la journée (saisie express, < 5 s).
+ * `boisson` est une clé normalisée du catalogue (`café`, `bière`…) ou un texte libre
+ * (traité comme de l'eau par défaut). Pas de prises structurées : un volume, c'est tout.
+ */
+export interface PriseHydrique {
+  boisson: string; // clé normalisée d'un ProfilBoisson, ou texte libre
+  volumeMl: number;
+  heure?: string; // 'HH:MM' optionnel — sert aux rappels intelligents
+}
+
+/**
+ * Boissons consommées sur une journée (une entrée/jour, comme `ConsommationJour`).
+ * Le bilan hydrique net est recalculé à la volée, jamais stocké.
+ */
+export interface HydratationJour {
+  date: DateISO;
+  prises: PriseHydrique[];
 }
 
 /** Statut manuel posé par l'utilisateur sur un aliment (prime sur le verdict auto). */

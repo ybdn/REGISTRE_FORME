@@ -181,6 +181,7 @@ export default function Layout() {
         <Stack.Screen name="bilan" options={{ title: 'Bilan hebdo' }} />
         <Stack.Screen name="apropos" options={{ title: 'Comment ça marche' }} />
         <Stack.Screen name="mesures" options={{ title: 'Mesures' }} />
+        <Stack.Screen name="hydratation" options={{ title: 'Hydratation' }} />
         <Stack.Screen name="sante-connect" options={{ title: 'Importer des séances' }} />
       </Stack>
     </SafeAreaProvider>

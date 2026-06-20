@@ -231,6 +231,36 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 7,
+    nom: 'suivi_hydratation',
+    sql: `
+      -- Prises de boisson du jour : tableau JSON de { boisson, volumeMl, heure? }, une entrée/jour
+      -- (même modèle que consommation_jour). Le bilan hydrique net est recalculé à la volée.
+      -- Colonnes de sync dès la création (dirty/maj_le) : entité synchronisée comme les autres.
+      CREATE TABLE IF NOT EXISTS hydratation_jour (
+        date   TEXT PRIMARY KEY,                     -- AAAA-MM-JJ
+        prises TEXT NOT NULL DEFAULT '[]',           -- JSON array de PriseHydrique
+        dirty  INTEGER NOT NULL DEFAULT 1,
+        maj_le TEXT
+      );
+    `,
+  },
+  {
+    version: 8,
+    nom: 'transit_mici',
+    // Signaux de transit cliniquement pertinents en MICI (Crohn) : échelle de Bristol
+    // (consistance, plus parlante que le seul comptage), sang, glaires, urgence fécale,
+    // difficulté d'évacuation. Défauts neutres pour les entrées déjà saisies.
+    sql: `
+      ALTER TABLE journal_crohn ADD COLUMN consistance_selles INTEGER NOT NULL DEFAULT 4
+        CHECK (consistance_selles BETWEEN 1 AND 7);
+      ALTER TABLE journal_crohn ADD COLUMN sang_selles INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE journal_crohn ADD COLUMN glaires INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE journal_crohn ADD COLUMN urgence_fecale INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE journal_crohn ADD COLUMN difficulte_evacuation INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 /** Version cible = plus haute migration connue. */

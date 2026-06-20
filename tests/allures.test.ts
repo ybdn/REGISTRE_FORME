@@ -85,7 +85,20 @@ describe('formatage', () => {
 
 describe('journal express', () => {
   function entree(date: string, tags: string[] = []): EntreeJournal {
-    return { date, douleur: 1, energie: 4, digestion: 4, nbSelles: 1, ballonnements: false, tags };
+    return {
+      date,
+      douleur: 1,
+      energie: 4,
+      digestion: 4,
+      nbSelles: 1,
+      consistanceSelles: 4,
+      sangSelles: false,
+      glaires: false,
+      urgenceFecale: false,
+      difficulteEvacuation: false,
+      ballonnements: false,
+      tags,
+    };
   }
 
   it('entreeVeille retrouve l’entrée d’hier (et seulement elle)', () => {

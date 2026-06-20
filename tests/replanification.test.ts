@@ -13,7 +13,20 @@ import { describe, expect, it } from 'vitest';
 const FIN = '2026-06-28';
 
 function entree(date: string, douleur: number, energie = 4): EntreeJournal {
-  return { date, douleur, energie, digestion: 4, nbSelles: 1, ballonnements: false, tags: [] };
+  return {
+    date,
+    douleur,
+    energie,
+    digestion: 4,
+    nbSelles: 1,
+    consistanceSelles: 4,
+    sangSelles: false,
+    glaires: false,
+    urgenceFecale: false,
+    difficulteEvacuation: false,
+    ballonnements: false,
+    tags: [],
+  };
 }
 
 describe('glisserProgramme', () => {

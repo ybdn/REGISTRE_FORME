@@ -4,6 +4,7 @@ import type {
   Adaptation,
   ConsommationJour,
   EntreeJournal,
+  HydratationJour,
   SeanceRealisee,
   SourceSeance,
   StatutAlimentManuel,
@@ -31,6 +32,7 @@ export function creerDepotMemoire(): Depot {
   const seances = new Map<string, SeanceRealisee>();
   const mesures = new Map<string, MesureCorporelle>();
   const consommations = new Map<string, ConsommationJour>();
+  const hydratations = new Map<string, HydratationJour>();
   const statutsAliments = new Map<string, StatutAlimentManuel>();
   const adaptations = new Map<string, AdaptationStockee>();
   const planifiees: SeancePlanifieeStockee[] = [];
@@ -111,6 +113,13 @@ export function creerDepotMemoire(): Depot {
     },
     async supprimerStatutAliment(aliment) {
       statutsAliments.delete(aliment);
+    },
+
+    async lireHydratations(depuis) {
+      return triParDate(hydratations, depuis);
+    },
+    async enregistrerHydratation(h) {
+      hydratations.set(h.date, h);
     },
 
     async lireSeancesPlanifieesSemaine(semaine) {

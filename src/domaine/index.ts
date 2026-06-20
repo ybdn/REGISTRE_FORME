@@ -20,6 +20,7 @@ export * from './importSanteConnect';
 export * from './journalExpress';
 export * from './correlations';
 export * from './alimentation';
+export * from './hydratation';
 export * from './records';
 export * from './tendances';
 export * from './replanification';

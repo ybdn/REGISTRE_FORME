@@ -3,6 +3,7 @@ import type {
   Adaptation,
   ConsommationJour,
   EntreeJournal,
+  HydratationJour,
   SeanceRealisee,
   SourceSeance,
   StatutAlimentManuel,
@@ -46,6 +47,10 @@ export interface Depot {
   lireStatutsAliments(): Promise<StatutAlimentManuel[]>;
   definirStatutAliment(s: StatutAlimentManuel): Promise<void>;
   supprimerStatutAliment(aliment: string): Promise<void>;
+
+  // ── Suivi de l'hydratation ─────────────────────────────────────────────────
+  lireHydratations(depuis?: string): Promise<HydratationJour[]>;
+  enregistrerHydratation(h: HydratationJour): Promise<void>;
 
   // ── Séances planifiées (trame du programme) ────────────────────────────────
   lireSeancesPlanifieesSemaine(semaine: number): Promise<SeancePlanifieeStockee[]>;

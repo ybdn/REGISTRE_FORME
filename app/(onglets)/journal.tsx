@@ -19,6 +19,18 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const TAGS = ['repas-gras', 'repas-tardif', 'stress', 'sommeil-court', 'voyage', 'hydratation-ok'];
 
+// Échelle de Bristol (consistance des selles) — repère clinique standard en MICI,
+// bien plus parlant qu'un simple comptage pour distinguer poussée diarrhéique et constipation.
+const BRISTOL: { valeur: number; libelle: string }[] = [
+  { valeur: 1, libelle: 'Billes dures' },
+  { valeur: 2, libelle: 'Saucisse grumeleuse' },
+  { valeur: 3, libelle: 'Saucisse craquelée' },
+  { valeur: 4, libelle: 'Saucisse lisse' },
+  { valeur: 5, libelle: 'Morceaux mous' },
+  { valeur: 6, libelle: 'Pâteuse' },
+  { valeur: 7, libelle: 'Entièrement liquide' },
+];
+
 // Journal express (doc 04 §4.2) : curseurs pré-positionnés sur la veille,
 // « identique à hier », tags récents en premier. Navigation libre dans
 // l'historique (jour par jour, futur bloqué) pour compléter les jours passés.
@@ -33,10 +45,48 @@ function valeursInitiales(existante: EntreeJournal | undefined, veille: EntreeJo
     digestion: source?.digestion ?? 3,
     // Seuls les curseurs sont pré-positionnés sur la veille ; le reste repart à neuf.
     nbSelles: existante?.nbSelles ?? 1,
+    consistanceSelles: existante?.consistanceSelles ?? 4,
+    sangSelles: existante?.sangSelles ?? false,
+    glaires: existante?.glaires ?? false,
+    urgenceFecale: existante?.urgenceFecale ?? false,
+    difficulteEvacuation: existante?.difficulteEvacuation ?? false,
     ballonnements: existante?.ballonnements ?? false,
     tags: existante?.tags ?? [],
     note: existante?.note ?? '',
   };
+}
+
+/** Bascule oui/non réutilisable (transit) ; `alerte` teinte la coche en rouge sécurité. */
+function Bascule({
+  libelle,
+  valeur,
+  onChange,
+  alerte = false,
+}: {
+  libelle: string;
+  valeur: boolean;
+  onChange: (v: boolean) => void;
+  alerte?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityState={{ checked: valeur }}
+      onPress={() => onChange(!valeur)}
+      style={styles.toggle}
+    >
+      <View
+        style={[
+          styles.coche,
+          alerte && styles.cocheAlerte,
+          valeur && (alerte ? styles.cocheAlerteActive : styles.cocheActive),
+        ]}
+      >
+        {valeur ? <Text style={styles.cocheMarque}>✓</Text> : null}
+      </View>
+      <Text style={styles.toggleTexte}>{libelle}</Text>
+    </Pressable>
+  );
 }
 
 export default function EcranJournal() {
@@ -50,7 +100,20 @@ export default function EcranJournal() {
   const estAujourdhui = dateCible === aujourdhui;
 
   const [valeurs, setValeurs] = useState(() => valeursInitiales(existante, veille));
-  const { douleur, energie, digestion, nbSelles, ballonnements, tags, note } = valeurs;
+  const {
+    douleur,
+    energie,
+    digestion,
+    nbSelles,
+    consistanceSelles,
+    sangSelles,
+    glaires,
+    urgenceFecale,
+    difficulteEvacuation,
+    ballonnements,
+    tags,
+    note,
+  } = valeurs;
   // Confirmation éphémère quand on enregistre un jour passé (on reste sur l'onglet).
   const [enregistre, setEnregistre] = useState(false);
 
@@ -80,6 +143,11 @@ export default function EcranJournal() {
       energie: veille.energie,
       digestion: veille.digestion,
       nbSelles: veille.nbSelles,
+      consistanceSelles: veille.consistanceSelles,
+      sangSelles: veille.sangSelles,
+      glaires: veille.glaires,
+      urgenceFecale: veille.urgenceFecale,
+      difficulteEvacuation: veille.difficulteEvacuation,
       ballonnements: veille.ballonnements,
       tags: [...veille.tags],
       note: '',
@@ -94,6 +162,11 @@ export default function EcranJournal() {
       energie,
       digestion,
       nbSelles,
+      consistanceSelles,
+      sangSelles,
+      glaires,
+      urgenceFecale,
+      difficulteEvacuation,
       ballonnements,
       tags,
       note: note.trim() || undefined,
@@ -176,17 +249,56 @@ export default function EcranJournal() {
             </Pressable>
           </View>
         </View>
-        <Pressable
-          accessibilityRole="switch"
-          accessibilityState={{ checked: ballonnements }}
-          onPress={() => poser('ballonnements', !ballonnements)}
-          style={styles.toggle}
-        >
-          <View style={[styles.coche, ballonnements && styles.cocheActive]}>
-            {ballonnements ? <Text style={styles.cocheMarque}>✓</Text> : null}
-          </View>
-          <Text style={styles.toggleTexte}>Ballonnements</Text>
-        </Pressable>
+
+        <Text style={[styles.stepperLabel, styles.bristolLabel]}>
+          Consistance (échelle de Bristol)
+        </Text>
+        <View style={styles.bristolRangee}>
+          {BRISTOL.map((b) => (
+            <Pressable
+              key={b.valeur}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: consistanceSelles === b.valeur }}
+              onPress={() => poser('consistanceSelles', b.valeur)}
+              style={[styles.bristolBtn, consistanceSelles === b.valeur && styles.bristolBtnActif]}
+            >
+              <Text
+                style={[
+                  styles.bristolBtnTexte,
+                  consistanceSelles === b.valeur && styles.bristolBtnTexteActif,
+                ]}
+              >
+                {b.valeur}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.indice}>
+          {BRISTOL.find((b) => b.valeur === consistanceSelles)?.libelle}
+        </Text>
+
+        <Bascule
+          libelle="Sang dans les selles"
+          valeur={sangSelles}
+          onChange={(v) => poser('sangSelles', v)}
+          alerte
+        />
+        <Bascule libelle="Glaires" valeur={glaires} onChange={(v) => poser('glaires', v)} />
+        <Bascule
+          libelle="Urgence fécale"
+          valeur={urgenceFecale}
+          onChange={(v) => poser('urgenceFecale', v)}
+        />
+        <Bascule
+          libelle="Difficulté à évacuer (constipation)"
+          valeur={difficulteEvacuation}
+          onChange={(v) => poser('difficulteEvacuation', v)}
+        />
+        <Bascule
+          libelle="Ballonnements"
+          valeur={ballonnements}
+          onChange={(v) => poser('ballonnements', v)}
+        />
       </Carte>
 
       <Carte>
@@ -253,8 +365,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cocheActive: { backgroundColor: couleurs.sante },
+  cocheAlerte: { borderColor: couleurs.alerte },
+  cocheAlerteActive: { backgroundColor: couleurs.alerte },
   cocheMarque: { color: couleurs.encre, fontFamily: typo.titre, fontSize: 14 },
   toggleTexte: { fontFamily: typo.corps, fontSize: 14, color: couleurs.texte },
+  bristolLabel: { marginTop: espace.md },
+  bristolRangee: {
+    flexDirection: 'row',
+    gap: espace.sm,
+    marginTop: espace.sm,
+  },
+  bristolBtn: {
+    flex: 1,
+    height: 36,
+    borderRadius: rayon.sm,
+    borderWidth: 1,
+    borderColor: couleurs.trait,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bristolBtnActif: { backgroundColor: couleurs.salle, borderColor: couleurs.salle },
+  bristolBtnTexte: { fontFamily: typo.donnees, fontSize: 14, color: couleurs.texte },
+  bristolBtnTexteActif: { color: couleurs.encre },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: espace.sm },
   input: {
     fontFamily: typo.corps,

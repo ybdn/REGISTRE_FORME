@@ -18,7 +18,7 @@ export type VarianteSeance = 'normale' | 'moderee' | 'allegee' | 'repos';
 
 /**
  * Entrée quotidienne du journal Crohn (saisie < 20 s).
- * Échelles : douleur 0-10, énergie 1-5, digestion 1-5.
+ * Échelles : douleur 0-10, énergie 1-5, digestion 1-5, consistance 1-7 (Bristol).
  */
 export interface EntreeJournal {
   date: DateISO;
@@ -26,6 +26,12 @@ export interface EntreeJournal {
   energie: number; // 1-5 (5 = pleine forme)
   digestion: number; // 1-5 (5 = parfaite)
   nbSelles: number;
+  /** Échelle de Bristol 1-7 (1 = durs/constipation, 4 = normale, 7 = entièrement liquide). */
+  consistanceSelles: number;
+  sangSelles: boolean; // sang visible — symptôme d'alerte MICI
+  glaires: boolean; // marqueur fréquent de poussée inflammatoire
+  urgenceFecale: boolean; // besoin impérieux / difficulté à se retenir
+  difficulteEvacuation: boolean; // constipation, efforts importants
   ballonnements: boolean;
   tags: string[]; // ex. ['repas-gras', 'stress']
   note?: string;

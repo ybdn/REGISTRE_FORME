@@ -2,7 +2,9 @@ import type {
   Adaptation,
   ConsommationJour,
   EntreeJournal,
+  HydratationJour,
   Phase,
+  PriseHydrique,
   SeanceRealisee,
   SourceSeance,
   StatutAlimentManuel,
@@ -233,6 +235,42 @@ export async function lireStatutsAliments(
 ): Promise<StatutAlimentManuel[]> {
   const lignes = await db.getAllAsync<StatutRow>('SELECT * FROM aliment_statut ORDER BY aliment');
   return lignes.map(versStatutAliment);
+}
+
+// ── Suivi de l'hydratation ──────────────────────────────────────────────────
+
+export async function enregistrerHydratation(
+  db: SQLite.SQLiteDatabase,
+  h: HydratationJour,
+): Promise<void> {
+  await db.runAsync(
+    `INSERT INTO hydratation_jour (date, prises, dirty, maj_le)
+     VALUES (?, ?, 1, ?)
+     ON CONFLICT(date) DO UPDATE SET prises=excluded.prises, dirty=1, maj_le=excluded.maj_le`,
+    [h.date, JSON.stringify(h.prises), maintenant()],
+  );
+}
+
+export async function lireHydratations(
+  db: SQLite.SQLiteDatabase,
+  depuis?: string,
+): Promise<HydratationJour[]> {
+  const lignes = depuis
+    ? await db.getAllAsync<HydratationRow>(
+        'SELECT * FROM hydratation_jour WHERE date >= ? ORDER BY date',
+        [depuis],
+      )
+    : await db.getAllAsync<HydratationRow>('SELECT * FROM hydratation_jour ORDER BY date');
+  return lignes.map(versHydratation);
+}
+
+export interface HydratationRow {
+  date: string;
+  prises: string;
+}
+
+export function versHydratation(r: HydratationRow): HydratationJour {
+  return { date: r.date, prises: JSON.parse(r.prises) as PriseHydrique[] };
 }
 
 // ── Séances réalisées ───────────────────────────────────────────────────────

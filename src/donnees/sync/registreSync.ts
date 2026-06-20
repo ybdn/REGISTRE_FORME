@@ -1,12 +1,14 @@
 import type {
   ConsommationJour,
   EntreeJournal,
+  HydratationJour,
   SeanceRealisee,
   StatutAlimentManuel,
 } from '@/domaine/types';
 import type * as SQLite from 'expo-sqlite';
 import {
   type ConsommationRow,
+  type HydratationRow,
   type JournalRow,
   type MesureCorporelle,
   type MesureRow,
@@ -14,11 +16,13 @@ import {
   type StatutRow,
   definirStatutAliment,
   enregistrerConsommation,
+  enregistrerHydratation,
   enregistrerJournal,
   enregistrerMesure,
   enregistrerSeance,
   versConsommation,
   versEntreeJournal,
+  versHydratation,
   versMesure,
   versSeanceRealisee,
   versStatutAliment,
@@ -99,6 +103,13 @@ export const ENTITES_SYNC: EntiteSync[] = [
     'aliment',
     versStatutAliment,
     definirStatutAliment,
+  ),
+  def<HydratationRow, HydratationJour>(
+    'hydratation_jour',
+    'hydratation_jour',
+    'date',
+    versHydratation,
+    enregistrerHydratation,
   ),
 ];
 

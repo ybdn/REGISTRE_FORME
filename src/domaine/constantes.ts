@@ -240,3 +240,50 @@ export const REPRISE_VOLUMES = [0.7, 0.85, 1.0] as const;
 
 /** Score de forme moyen minimal sur la semaine pour valider un palier et passer au suivant. */
 export const REPRISE_SCORE_MIN = 60;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HYDRATATION NETTE — suivi intelligent des apports vs pertes (cf. hydratation.ts).
+// Bilan = apports pondérés (eau équivalente) − dette diurétique (café/alcool), comparé
+// à un objectif ADAPTATIF (poids + sudation des séances + pertes digestives MICI).
+// Modèle déterministe et explicable ; n'entre PAS dans le score de forme (garde-fou seulement).
+// Coefficients inspirés du Beverage Hydration Index (Maughan 2016).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Besoin de base : ~33 mL d'eau par kg de poids corporel et par jour. */
+export const HYDRATATION_ML_PAR_KG = 33;
+
+/** Plancher d'objectif (le besoin de base ne descend jamais sous ce seuil). */
+export const HYDRATATION_OBJECTIF_PLANCHER_ML = 1500;
+
+/** Objectif de base par défaut tant qu'aucun poids n'est connu (≈ 65 kg). */
+export const HYDRATATION_OBJECTIF_DEFAUT_ML = 2000;
+
+/**
+ * Taux de sudation estimé (mL/min) par tranche d'effort perçu (RPE) — pertes à compenser.
+ * De ~0,4 L/h (effort léger) à ~1,1 L/h (effort maximal). Déterministe et conservateur.
+ */
+export const SUDATION_ML_PAR_MIN = { leger: 6, modere: 10, soutenu: 14, intense: 18 } as const;
+
+/** Nombre de selles considéré « normal » sur une journée : au-delà, perte hydrique comptée. */
+export const SELLES_NORMALES_PAR_JOUR = 2;
+
+/** Perte d'eau estimée par selle au-delà de la normale (selles molles = grosse perte sous MICI). */
+export const PERTE_ML_PAR_SELLE_EXTRA = 150;
+
+/** Diurèse de l'alcool : ~10 mL d'urine excrétée par gramme d'éthanol pur. */
+export const ALCOOL_DIURESE_ML_PAR_G = 10;
+
+/** Caféine : neutre au quotidien, dette diurétique seulement au-delà de cette dose/jour (mg). */
+export const CAFEINE_SEUIL_DIURESE_MG = 300;
+
+/** Au-delà du seuil, chaque mg de caféine « coûte » ce volume d'eau (mL). */
+export const CAFEINE_DIURESE_ML_PAR_MG = 1;
+
+/** Ratio (apport net / objectif) à partir duquel la journée est « bien hydratée ». */
+export const HYDRATATION_SEUIL_OK = 0.9;
+
+/** En dessous de ce ratio, la journée bascule en « déshydratation » (au-dessus = « à boire »). */
+export const HYDRATATION_SEUIL_DESHYDRATATION = 0.6;
+
+/** Sous ce ratio, le garde-fou avertit de s'hydrater AVANT l'effort (jamais bloquant). */
+export const HYDRATATION_GARDE_FOU_RATIO = 0.5;

@@ -4,7 +4,20 @@ import type { EntreeJournal } from '@/domaine/types';
 import { describe, expect, it } from 'vitest';
 
 function entree(date: string, douleur: number): EntreeJournal {
-  return { date, douleur, energie: 5, digestion: 5, nbSelles: 1, ballonnements: false, tags: [] };
+  return {
+    date,
+    douleur,
+    energie: 5,
+    digestion: 5,
+    nbSelles: 1,
+    consistanceSelles: 4,
+    sangSelles: false,
+    glaires: false,
+    urgenceFecale: false,
+    difficulteEvacuation: false,
+    ballonnements: false,
+    tags: [],
+  };
 }
 
 /** Journal de N jours consécutifs se terminant à `fin` (douleurs du plus ancien au plus récent). */

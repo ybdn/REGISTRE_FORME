@@ -78,8 +78,13 @@ function syntheseJournal(journal: EntreeJournal[]) {
     energieMoy: moyenne(journal.map((e) => e.energie)),
     digestionMoy: moyenne(journal.map((e) => e.digestion)),
     sellesMoy: moyenne(journal.map((e) => e.nbSelles)),
+    consistanceMoy: moyenne(journal.map((e) => e.consistanceSelles)),
     joursDegrades,
     joursAvecBallonnements: journal.filter((e) => e.ballonnements).length,
+    joursAvecSang: journal.filter((e) => e.sangSelles).length,
+    joursAvecGlaires: journal.filter((e) => e.glaires).length,
+    joursAvecUrgence: journal.filter((e) => e.urgenceFecale).length,
+    joursAvecDifficulteEvacuation: journal.filter((e) => e.difficulteEvacuation).length,
   };
 }
 
@@ -211,8 +216,13 @@ export function construireRapportHtml(d: DonneesRapport): string {
     <div class="indic"><div class="v">${fmt(j.energieMoy)}</div><div class="l">Énergie moy. /5</div></div>
     <div class="indic"><div class="v">${fmt(j.digestionMoy)}</div><div class="l">Digestion moy. /5</div></div>
     <div class="indic"><div class="v">${fmt(j.sellesMoy)}</div><div class="l">Selles / jour</div></div>
+    <div class="indic"><div class="v">${fmt(j.consistanceMoy)}</div><div class="l">Bristol moy. /7</div></div>
     <div class="indic"><div class="v ${j.joursDegrades > 0 ? 'alerte' : ''}">${j.joursDegrades}</div><div class="l">Jours dégradés</div></div>
     <div class="indic"><div class="v">${j.joursAvecBallonnements}</div><div class="l">Jours ballonnés</div></div>
+    <div class="indic"><div class="v ${j.joursAvecSang > 0 ? 'alerte' : ''}">${j.joursAvecSang}</div><div class="l">Jours avec sang</div></div>
+    <div class="indic"><div class="v">${j.joursAvecGlaires}</div><div class="l">Jours avec glaires</div></div>
+    <div class="indic"><div class="v">${j.joursAvecUrgence}</div><div class="l">Jours d'urgence fécale</div></div>
+    <div class="indic"><div class="v">${j.joursAvecDifficulteEvacuation}</div><div class="l">Jours de constipation</div></div>
   </div>
   <p class="meta">Jour dégradé = douleur ≥ ${SEUIL_DOULEUR}/10 ou énergie ≤ ${SEUIL_ENERGIE}/5.${
     baseline !== null

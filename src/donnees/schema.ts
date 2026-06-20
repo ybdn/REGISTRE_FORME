@@ -231,6 +231,21 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 7,
+    nom: 'transit_mici',
+    // Signaux de transit cliniquement pertinents en MICI (Crohn) : échelle de Bristol
+    // (consistance, plus parlante que le seul comptage), sang, glaires, urgence fécale,
+    // difficulté d'évacuation. Défauts neutres pour les entrées déjà saisies.
+    sql: `
+      ALTER TABLE journal_crohn ADD COLUMN consistance_selles INTEGER NOT NULL DEFAULT 4
+        CHECK (consistance_selles BETWEEN 1 AND 7);
+      ALTER TABLE journal_crohn ADD COLUMN sang_selles INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE journal_crohn ADD COLUMN glaires INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE journal_crohn ADD COLUMN urgence_fecale INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE journal_crohn ADD COLUMN difficulte_evacuation INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 /** Version cible = plus haute migration connue. */

@@ -40,6 +40,26 @@ export interface ConsommationJour {
   aliments: string[]; // ex. ['café', 'pizza', 'yaourt nature']
 }
 
+/**
+ * Une prise de boisson dans la journée (saisie express, < 5 s).
+ * `boisson` est une clé normalisée du catalogue (`café`, `bière`…) ou un texte libre
+ * (traité comme de l'eau par défaut). Pas de prises structurées : un volume, c'est tout.
+ */
+export interface PriseHydrique {
+  boisson: string; // clé normalisée d'un ProfilBoisson, ou texte libre
+  volumeMl: number;
+  heure?: string; // 'HH:MM' optionnel — sert aux rappels intelligents
+}
+
+/**
+ * Boissons consommées sur une journée (une entrée/jour, comme `ConsommationJour`).
+ * Le bilan hydrique net est recalculé à la volée, jamais stocké.
+ */
+export interface HydratationJour {
+  date: DateISO;
+  prises: PriseHydrique[];
+}
+
 /** Statut manuel posé par l'utilisateur sur un aliment (prime sur le verdict auto). */
 export type StatutAliment = 'tolere' | 'a-eviter' | 'a-tester';
 

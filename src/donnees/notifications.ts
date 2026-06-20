@@ -1,4 +1,5 @@
-import { type DateISO, ajouterJours, jourDeLaSemaine } from '@/domaine';
+import { type BilanHydrique, type DateISO, ajouterJours, jourDeLaSemaine } from '@/domaine';
+import { formaterVolume } from '@/domaine/hydratation';
 import type { EntreeJournal } from '@/domaine/types';
 import type { MesureCorporelle } from '@/donnees/depots';
 import * as Notifications from 'expo-notifications';
@@ -22,10 +23,17 @@ export function configurerHandlerNotifications(): void {
 const ID_RAPPEL_JOURNAL = 'rappel-journal';
 const ID_RAPPEL_PESEE = 'rappel-pesee';
 const ID_RAPPEL_BILAN = 'rappel-bilan';
+const ID_RAPPEL_HYDRATATION = 'rappel-hydratation';
 
 const HEURE_RAPPEL_JOURNAL = { heure: 20, minute: 0 };
 const HEURE_RAPPEL_PESEE = { heure: 8, minute: 0 };
 const HEURE_RAPPEL_BILAN = { heure: 18, minute: 0 };
+
+// Plage d'éveil pour les rappels d'hydratation (pas de notification la nuit).
+const HYDRATATION_HEURE_DEBUT = 9;
+const HYDRATATION_HEURE_FIN = 21;
+/** Intervalle entre deux rappels d'hydratation tant qu'on est en retard sur l'objectif. */
+const HYDRATATION_INTERVALLE_MIN = 150; // 2 h 30
 
 let canalAndroidPret = false;
 
@@ -45,6 +53,20 @@ function construireDate(date: DateISO, heure: number, minute: number): Date {
 }
 
 /**
+ * Prochain créneau de rappel d'hydratation : `maintenant` + intervalle, ramené dans la
+ * plage d'éveil. Avant le début de plage → premier créneau du jour ; après la fin → `null`
+ * (plus de rappel ce soir, on ne notifie pas la nuit).
+ */
+function prochainCreneauHydratation(maintenant: Date): Date | null {
+  const cible = new Date(maintenant.getTime() + HYDRATATION_INTERVALLE_MIN * 60_000);
+  if (cible.getHours() < HYDRATATION_HEURE_DEBUT) {
+    cible.setHours(HYDRATATION_HEURE_DEBUT, 0, 0, 0);
+  }
+  if (cible.getHours() >= HYDRATATION_HEURE_FIN) return null;
+  return cible;
+}
+
+/**
  * Recalcule et reprogramme les rappels locaux à partir de l'état courant.
  * Échoue silencieusement (notifications = confort, jamais bloquant).
  */
@@ -52,6 +74,7 @@ export async function synchroniserNotifications(
   aujourdhui: DateISO,
   journal: EntreeJournal[],
   mesures: MesureCorporelle[],
+  bilanHydrique: BilanHydrique | null = null,
 ): Promise<void> {
   try {
     let { granted } = await Notifications.getPermissionsAsync();
@@ -130,6 +153,31 @@ export async function synchroniserNotifications(
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: cibleBilan },
     });
+
+    // Rappel d'hydratation INTELLIGENT : on ne harcèle pas. Un seul prochain rappel,
+    // programmé seulement si on est encore en retard sur l'objectif ADAPTATIF du jour
+    // (relevé par le sport et les selles), et uniquement dans la plage d'éveil. Atteint
+    // → aucun rappel (supprimé). Le corps du message dit le reste exact à boire.
+    await Notifications.cancelScheduledNotificationAsync(ID_RAPPEL_HYDRATATION);
+    if (bilanHydrique && bilanHydrique.statut !== 'ok' && bilanHydrique.resteMl > 0) {
+      const cibleHydratation = prochainCreneauHydratation(maintenant);
+      if (cibleHydratation) {
+        await Notifications.scheduleNotificationAsync({
+          identifier: ID_RAPPEL_HYDRATATION,
+          content: {
+            title: 'Pense à boire',
+            body:
+              bilanHydrique.statut === 'deshydratation'
+                ? `Hydratation basse aujourd’hui : il reste ${formaterVolume(bilanHydrique.resteMl)} à boire.`
+                : `Encore ${formaterVolume(bilanHydrique.resteMl)} d’eau pour atteindre ton objectif du jour.`,
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: cibleHydratation,
+          },
+        });
+      }
+    }
   } catch {
     // Notifications optionnelles : on n'interrompt jamais le flux applicatif.
   }

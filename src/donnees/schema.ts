@@ -231,6 +231,21 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 7,
+    nom: 'suivi_hydratation',
+    sql: `
+      -- Prises de boisson du jour : tableau JSON de { boisson, volumeMl, heure? }, une entrée/jour
+      -- (même modèle que consommation_jour). Le bilan hydrique net est recalculé à la volée.
+      -- Colonnes de sync dès la création (dirty/maj_le) : entité synchronisée comme les autres.
+      CREATE TABLE IF NOT EXISTS hydratation_jour (
+        date   TEXT PRIMARY KEY,                     -- AAAA-MM-JJ
+        prises TEXT NOT NULL DEFAULT '[]',           -- JSON array de PriseHydrique
+        dirty  INTEGER NOT NULL DEFAULT 1,
+        maj_le TEXT
+      );
+    `,
+  },
 ];
 
 /** Version cible = plus haute migration connue. */

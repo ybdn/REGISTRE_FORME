@@ -3,6 +3,7 @@ import type {
   Adaptation,
   ConsommationJour,
   EntreeJournal,
+  HydratationJour,
   SeanceRealisee,
   SourceSeance,
   StatutAlimentManuel,
@@ -151,6 +152,9 @@ export function creerDepotSupabase(
     },
     definirStatutAliment: (s) => ecrire('aliment_statut', s.aliment, s),
     supprimerStatutAliment: (aliment) => supprimer('aliment_statut', aliment),
+
+    lireHydratations: (depuis) => lireContenus<HydratationJour>('hydratation_jour', depuis),
+    enregistrerHydratation: (h) => ecrire('hydratation_jour', h.date, h),
 
     async lireSeancesPlanifieesSemaine(semaine) {
       const planifiees = await lireContenus<SeancePlanifieeStockee>('seance_planifiee');

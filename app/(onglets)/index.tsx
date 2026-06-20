@@ -13,6 +13,8 @@ import { couleurType, couleurs, espace, rayon, typo } from '@/design/theme';
 import {
   type TypeSeance,
   ajouterJours,
+  avertissementHydratationAvantEffort,
+  formaterVolume,
   jourDeLaSemaine,
   peutSortirDePoussee,
   suggererModePousse,
@@ -42,6 +44,7 @@ export default function TableauDeBord() {
     definirModePousse,
     seanceDuJour,
     scoreFormeDuJour,
+    bilanHydriqueDuJour,
   } = useMagasin();
 
   if (!profil) return <Redirect href="/onboarding" />;
@@ -54,6 +57,16 @@ export default function TableauDeBord() {
   const jourAuj = jourDeLaSemaine(aujourdhui);
   const sdj = seanceDuJour();
   const journalDuJourSaisi = journal.some((e) => e.date === aujourdhui);
+  // Garde-fou hydratation : seulement s'il y a une séance ET un retard marqué (jamais bloquant).
+  const avertHydratation =
+    sdj && bilanHydriqueDuJour ? avertissementHydratationAvantEffort(bilanHydriqueDuJour) : null;
+  const couleurHydratation = bilanHydriqueDuJour
+    ? bilanHydriqueDuJour.statut === 'ok'
+      ? couleurs.freeletics
+      : bilanHydriqueDuJour.statut === 'a-boire'
+        ? couleurs.salle
+        : couleurs.sante
+    : couleurs.salle;
 
   // Dates réalisées (set) pour marquer le semainier.
   const datesFaites = new Set(seances.map((s) => s.date));
@@ -156,6 +169,31 @@ export default function TableauDeBord() {
         </Carte>
       ) : null}
 
+      {/* Hydratation du jour — bilan net vs objectif adaptatif, accès au détail. */}
+      {bilanHydriqueDuJour ? (
+        <Pressable onPress={() => router.push('/hydratation')} accessibilityRole="button">
+          <Carte>
+            <View style={styles.ligneEntete}>
+              <SousTitre>Hydratation</SousTitre>
+              <Donnee
+                valeur={formaterVolume(bilanHydriqueDuJour.apportNetMl)}
+                couleur={couleurHydratation}
+              />
+            </View>
+            <Jauge
+              valeur={Math.min(100, Math.round(bilanHydriqueDuJour.ratio * 100))}
+              couleur={couleurHydratation}
+            />
+            <Text style={styles.lienForme}>
+              {bilanHydriqueDuJour.statut === 'ok'
+                ? 'Objectif atteint — '
+                : `Reste ${formaterVolume(bilanHydriqueDuJour.resteMl)} · `}
+              objectif {formaterVolume(bilanHydriqueDuJour.objectifMl)} →
+            </Text>
+          </Carte>
+        </Pressable>
+      ) : null}
+
       {/* Semainier façon planning de service. */}
       <Carte>
         <View style={styles.ligneEntete}>
@@ -189,6 +227,15 @@ export default function TableauDeBord() {
       {/* Prochaine séance. */}
       <Carte>
         <SousTitre>Séance du jour</SousTitre>
+        {avertHydratation ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/hydratation')}
+            style={styles.gardeFou}
+          >
+            <Text style={styles.gardeFouTexte}>💧 {avertHydratation}</Text>
+          </Pressable>
+        ) : null}
         {sdj ? (
           <>
             <Text style={[styles.titreSeance, { color: couleurType[sdj.planifiee.type] }]}>
@@ -232,6 +279,13 @@ export default function TableauDeBord() {
         icone="coffee"
         couleur={couleurs.sante}
         onPress={() => router.push('/alimentation')}
+      />
+      <LigneNavigation
+        titre="Hydratation"
+        detail="Eau utile vs objectif adaptatif"
+        icone="droplet"
+        couleur={couleurs.salle}
+        onPress={() => router.push('/hydratation')}
       />
       <LigneNavigation
         titre="Mesures corporelles"
@@ -292,6 +346,14 @@ const styles = StyleSheet.create({
   jourLettreAuj: { color: couleurs.texte },
   pastilleVide: { width: 14, height: 14 },
   titreSeance: { fontFamily: typo.titre, fontSize: 18 },
+  gardeFou: {
+    backgroundColor: couleurs.fond,
+    borderWidth: 1,
+    borderColor: couleurs.salle,
+    borderRadius: rayon.sm,
+    padding: espace.sm,
+  },
+  gardeFouTexte: { fontFamily: typo.corps, fontSize: 13, color: couleurs.texte, lineHeight: 18 },
   indicateurs: { flexDirection: 'row', gap: espace.lg },
   indicateur: { flex: 1 },
   disclaimer: {

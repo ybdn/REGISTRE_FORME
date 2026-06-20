@@ -3,6 +3,7 @@ import type {
   Adaptation,
   ConsommationJour,
   EntreeJournal,
+  HydratationJour,
   SeanceRealisee,
   SourceSeance,
   StatutAlimentManuel,
@@ -16,11 +17,13 @@ import {
   definirStatutAliment,
   enregistrerAdaptation,
   enregistrerConsommation,
+  enregistrerHydratation,
   enregistrerJournal,
   enregistrerMesure,
   enregistrerSeance,
   lireAdaptationsAppliquees,
   lireConsommations,
+  lireHydratations,
   lireIdsExternes,
   lireJournal,
   lireMesures,
@@ -47,6 +50,7 @@ const TABLES_SAUVEGARDE = [
   'adaptation',
   'consommation_jour',
   'aliment_statut',
+  'hydratation_jour',
 ] as const;
 
 export function creerDepotSqlite(db: SQLite.SQLiteDatabase): Depot {
@@ -72,6 +76,9 @@ export function creerDepotSqlite(db: SQLite.SQLiteDatabase): Depot {
     lireStatutsAliments: () => lireStatutsAliments(db),
     definirStatutAliment: (s: StatutAlimentManuel) => definirStatutAliment(db, s),
     supprimerStatutAliment: (aliment: string) => supprimerStatutAliment(db, aliment),
+
+    lireHydratations: (depuis?: string) => lireHydratations(db, depuis),
+    enregistrerHydratation: (h: HydratationJour) => enregistrerHydratation(db, h),
 
     lireSeancesPlanifieesSemaine: (semaine: number) => lireSeancesPlanifieesSemaine(db, semaine),
 

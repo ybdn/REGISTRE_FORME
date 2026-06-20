@@ -1,4 +1,4 @@
-import type { DateISO } from '@/domaine';
+import type { BilanHydrique, DateISO } from '@/domaine';
 import type { EntreeJournal } from '@/domaine/types';
 import type { MesureCorporelle } from '@/donnees/depots';
 
@@ -12,4 +12,5 @@ export async function synchroniserNotifications(
   _aujourdhui: DateISO,
   _journal: EntreeJournal[],
   _mesures: MesureCorporelle[],
+  _bilanHydrique: BilanHydrique | null = null,
 ): Promise<void> {}

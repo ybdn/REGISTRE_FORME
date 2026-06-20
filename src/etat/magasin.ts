@@ -1,9 +1,11 @@
 import {
   type Adaptation,
   type Baseline,
+  type BilanHydrique,
   type ConsommationJour,
   type EntreeJournal,
   FENETRE_IMPORT_SANTE_CONNECT_JOURS,
+  type HydratationJour,
   MODELE_ALLEGE_ID,
   type ScoreForme,
   type SeanceRealisee,
@@ -14,6 +16,7 @@ import {
   ajouterJours,
   aujourdhuiISO,
   calculerBaseline,
+  calculerBilanHydrique,
   calculerScoreForme,
   evaluerAdaptation,
   filtrerNouvellesSessions,
@@ -134,10 +137,12 @@ interface EtatApp {
   mesures: MesureCorporelle[];
   consommations: ConsommationJour[];
   statutsAliments: StatutAlimentManuel[];
+  hydratations: HydratationJour[];
   planifieesSemaine: SeancePlanifieeStockee[];
   adaptationDuJour: Adaptation | null;
   idAdaptationDuJour: string | null;
   scoreFormeDuJour: ScoreForme | null;
+  bilanHydriqueDuJour: BilanHydrique | null;
   baselineDuJour: Baseline | null;
   sync: EtatSyncUI;
   e2ee: EtatE2EE;
@@ -166,6 +171,7 @@ interface EtatApp {
   enregistrerMesureCorporelle: (m: MesureCorporelle) => Promise<void>;
   saisirConsommation: (c: ConsommationJour) => Promise<void>;
   definirStatutAliment: (aliment: string, statut: StatutAliment | null) => Promise<void>;
+  saisirHydratation: (h: HydratationJour) => Promise<void>;
   annulerAdaptation: () => Promise<void>;
   definirModePousse: (actif: boolean) => Promise<void>;
   exporterSauvegarde: (passphrase: string) => Promise<void>;
@@ -188,10 +194,12 @@ export const useMagasin = create<EtatApp>((set, get) => ({
   mesures: [],
   consommations: [],
   statutsAliments: [],
+  hydratations: [],
   planifieesSemaine: [],
   adaptationDuJour: null,
   idAdaptationDuJour: null,
   scoreFormeDuJour: null,
+  bilanHydriqueDuJour: null,
   baselineDuJour: null,
   sync: SYNC_INITIAL,
   e2ee: E2EE_INITIAL,
@@ -449,6 +457,14 @@ export const useMagasin = create<EtatApp>((set, get) => ({
     await recharger(set, depot, get().profil, get().aujourdhui);
   },
 
+  async saisirHydratation(h) {
+    if (!depot) throw new Error('Dépôt non initialisé');
+    // Noms de boissons normalisés dès la persistance (cohérent avec le catalogue et les insights).
+    const prises = h.prises.map((p) => ({ ...p, boisson: normaliserAliment(p.boisson) }));
+    await depot.enregistrerHydratation({ date: h.date, prises });
+    await recharger(set, depot, get().profil, get().aujourdhui);
+  },
+
   async annulerAdaptation() {
     if (!depot) return;
     const id = get().idAdaptationDuJour;
@@ -572,15 +588,23 @@ async function recharger(
 
   // Fenêtre de lecture : 30 jours glissants suffisent au moteur (14 j) et aux graphes courts.
   const depuis = ajouterJours(aujourdhui, -120);
-  const [journal, seances, mesures, consommations, statutsAliments, planifieesSemaine] =
-    await Promise.all([
-      depot.lireJournal(depuis),
-      depot.lireSeances(depuis),
-      depot.lireMesures(depuis),
-      depot.lireConsommations(depuis),
-      depot.lireStatutsAliments(),
-      depot.lireSeancesPlanifieesSemaine(semaineCourante),
-    ]);
+  const [
+    journal,
+    seances,
+    mesures,
+    consommations,
+    statutsAliments,
+    hydratations,
+    planifieesSemaine,
+  ] = await Promise.all([
+    depot.lireJournal(depuis),
+    depot.lireSeances(depuis),
+    depot.lireMesures(depuis),
+    depot.lireConsommations(depuis),
+    depot.lireStatutsAliments(),
+    depot.lireHydratations(depuis),
+    depot.lireSeancesPlanifieesSemaine(semaineCourante),
+  ]);
 
   let adaptationDuJour: Adaptation | null = null;
   let idAdaptationDuJour: string | null = null;
@@ -608,6 +632,16 @@ async function recharger(
       })
     : null;
 
+  // Bilan hydrique net du jour (objectif adaptatif : poids + sudation + pertes digestives MICI).
+  const dernierPoids = [...mesures].reverse().find((m) => m.poidsKg != null)?.poidsKg ?? null;
+  const bilanHydriqueDuJour = calculerBilanHydrique({
+    date: aujourdhui,
+    prises: hydratations.find((h) => h.date === aujourdhui)?.prises ?? [],
+    poidsKg: dernierPoids,
+    nbSelles: entreeAuj?.nbSelles ?? null,
+    seancesDuJour: seances.filter((s) => s.date === aujourdhui),
+  });
+
   set({
     profil,
     semaineCourante,
@@ -616,10 +650,12 @@ async function recharger(
     mesures,
     consommations,
     statutsAliments,
+    hydratations,
     planifieesSemaine,
     adaptationDuJour,
     idAdaptationDuJour,
     scoreFormeDuJour,
+    bilanHydriqueDuJour,
     baselineDuJour,
     aujourdhui,
   });
@@ -627,7 +663,7 @@ async function recharger(
   // Reprogrammation des rappels locaux : fire-and-forget, ne doit jamais
   // retarder le passage à `pret: true` ni l'UI (permission éventuelle).
   if (profil) {
-    void synchroniserNotifications(aujourdhui, journal, mesures);
+    void synchroniserNotifications(aujourdhui, journal, mesures, bilanHydriqueDuJour);
   }
 
   // Toute écriture marque des lignes `dirty` → planifier un push différé (no-op si non connecté).
